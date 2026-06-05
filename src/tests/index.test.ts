@@ -1,13 +1,41 @@
 import { describe, expect, mock, test } from "bun:test";
 
-import type { ClickUpWebhookPayload } from "../types/clickup-webhook";
 import { createApp } from "../index";
-import { createClickUpWebhookHandler } from "../services/clickup-webhook";
+import {
+  createClickUpWebhookHandler,
+  getAutomationSourceListId,
+} from "../services/clickup-webhook";
+import type { ClickUpWebhookPayload } from "../types/clickup-webhook";
 
-function flushMicrotasks() {
+function flushAsyncWork() {
   return new Promise<void>((resolve) => {
-    queueMicrotask(resolve);
+    queueMicrotask(() => {
+      void Promise.resolve().then(() => resolve());
+    });
   });
+}
+
+function createAutomationPayload(
+  overrides: Partial<Extract<ClickUpWebhookPayload, { auto_id: string }>> = {},
+) {
+  return {
+    auto_id: "auto_123",
+    trigger_id: "trigger_123",
+    date: "2026-06-05T18:42:20.382Z",
+    payload: {
+      id: "task_123",
+      name: "Victor Augusto LTDA",
+      subcategory: "source-list-123",
+      lists: [
+        {
+          list_id: "source-list-123",
+          type: "home",
+        },
+      ],
+      fields: [],
+    },
+    ...overrides,
+  } satisfies ClickUpWebhookPayload;
 }
 
 describe("createApp", () => {
@@ -77,7 +105,9 @@ describe("createApp", () => {
   });
 
   test("returns 200 for a valid ClickUp payload", async () => {
-    const app = createApp();
+    const app = createApp({
+      saveWebhookPayload: async () => {},
+    });
 
     const response = await app.request("/webhook", {
       method: "POST",
@@ -98,22 +128,16 @@ describe("createApp", () => {
   });
 
   test("returns 200 for a valid ClickUp automation payload", async () => {
-    const app = createApp();
+    const app = createApp({
+      saveWebhookPayload: async () => {},
+    });
 
     const response = await app.request("/webhook", {
       method: "POST",
       headers: {
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        auto_id: "c389706e-3a5f-4230-a2aa-cdea3dc1e4cc:main",
-        trigger_id: "40dd6192-91d7-4f3e-b55f-605297c77bb7",
-        date: "2025-04-16T23:49:06.457Z",
-        payload: {
-          id: "868djdyr0",
-          name: "HookMe!",
-        },
-      }),
+      body: JSON.stringify(createAutomationPayload()),
     });
 
     expect(response.status).toBe(200);
@@ -123,22 +147,15 @@ describe("createApp", () => {
     });
   });
 
-  test("saves a valid ClickUp automation payload using the trigger id", async () => {
+  test("saves a valid ClickUp automation payload asynchronously", async () => {
     let savedPayload: ClickUpWebhookPayload | undefined;
     const app = createApp({
       saveWebhookPayload: async (payload) => {
         savedPayload = payload;
       },
+      handleClickUpWebhook: async () => {},
     });
-    const payload = {
-      auto_id: "c389706e-3a5f-4230-a2aa-cdea3dc1e4cc:main",
-      trigger_id: "40dd6192-91d7-4f3e-b55f-605297c77bb7",
-      date: "2025-04-16T23:49:06.457Z",
-      payload: {
-        id: "868djdyr0",
-        name: "HookMe!",
-      },
-    };
+    const payload = createAutomationPayload();
 
     const response = await app.request("/webhook", {
       method: "POST",
@@ -148,6 +165,8 @@ describe("createApp", () => {
       body: JSON.stringify(payload),
     });
 
+    await flushAsyncWork();
+
     expect(response.status).toBe(200);
     expect(savedPayload).toEqual(payload);
   });
@@ -155,6 +174,7 @@ describe("createApp", () => {
   test("forwards valid payloads to the webhook handler", async () => {
     let receivedPayload: ClickUpWebhookPayload | undefined;
     const app = createApp({
+      saveWebhookPayload: async () => {},
       handleClickUpWebhook: async (payload) => {
         receivedPayload = payload;
       },
@@ -173,7 +193,7 @@ describe("createApp", () => {
       body: JSON.stringify(payload),
     });
 
-    await flushMicrotasks();
+    await flushAsyncWork();
 
     expect(response.status).toBe(200);
     expect(receivedPayload).toEqual(payload);
@@ -183,6 +203,7 @@ describe("createApp", () => {
     const originalConsoleError = console.error;
     const consoleError = mock(() => {});
     const app = createApp({
+      saveWebhookPayload: async () => {},
       handleClickUpWebhook: async () => {
         throw new Error("processing failed");
       },
@@ -202,7 +223,7 @@ describe("createApp", () => {
         }),
       });
 
-      await flushMicrotasks();
+      await flushAsyncWork();
 
       expect(response.status).toBe(200);
       expect(consoleError).toHaveBeenCalledTimes(1);
@@ -213,11 +234,12 @@ describe("createApp", () => {
 });
 
 describe("createClickUpWebhookHandler", () => {
-  test("does nothing when the event is not relevant", async () => {
-    const performClickUpFollowUpAction = mock(async () => {});
+  test("ignores non-automation payloads", async () => {
+    const command = mock(async () => {});
     const handleClickUpWebhook = createClickUpWebhookHandler({
-      relevantEvents: ["taskStatusUpdated"],
-      performClickUpFollowUpAction,
+      commandsBySourceListId: {
+        "source-list-123": command,
+      },
     });
 
     await handleClickUpWebhook({
@@ -225,24 +247,70 @@ describe("createClickUpWebhookHandler", () => {
       webhook_id: "wh_123",
     });
 
-    expect(performClickUpFollowUpAction).not.toHaveBeenCalled();
+    expect(command).not.toHaveBeenCalled();
   });
 
-  test("calls the follow-up action when the event is relevant", async () => {
-    const performClickUpFollowUpAction = mock(async () => {});
+  test("dispatches automation payloads using the source list id", async () => {
+    const command = mock(async () => {});
     const handleClickUpWebhook = createClickUpWebhookHandler({
-      relevantEvents: ["taskCreated"],
-      performClickUpFollowUpAction,
+      commandsBySourceListId: {
+        "source-list-123": command,
+      },
     });
-    const payload = {
-      event: "taskCreated",
-      webhook_id: "wh_123",
-      task_id: "task_456",
-    };
+    const payload = createAutomationPayload();
 
     await handleClickUpWebhook(payload);
 
-    expect(performClickUpFollowUpAction).toHaveBeenCalledTimes(1);
-    expect(performClickUpFollowUpAction).toHaveBeenCalledWith(payload);
+    expect(command).toHaveBeenCalledTimes(1);
+    expect(command).toHaveBeenCalledWith(payload);
+  });
+
+  test("falls back to the first list when subcategory is missing", () => {
+    const payload = createAutomationPayload({
+      payload: {
+        id: "task_123",
+        name: "Victor Augusto LTDA",
+        subcategory: null,
+        lists: [
+          {
+            list_id: "fallback-list-456",
+            type: "home",
+          },
+        ],
+        fields: [],
+      },
+    });
+
+    expect(getAutomationSourceListId(payload)).toBe("fallback-list-456");
+  });
+
+  test("does nothing when there is no command for the source list", async () => {
+    const command = mock(async () => {});
+    const handleClickUpWebhook = createClickUpWebhookHandler({
+      commandsBySourceListId: {
+        "another-list": command,
+      },
+    });
+
+    await handleClickUpWebhook(createAutomationPayload());
+
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  test("warns when NOVO_CLIENTE is not configured", async () => {
+    const logger = {
+      warn: mock(() => {}),
+    };
+    const handleClickUpWebhook = createClickUpWebhookHandler({
+      logger,
+      novoClienteListId: "",
+    });
+
+    await handleClickUpWebhook(createAutomationPayload());
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "NOVO_CLIENTE is not configured; skipping webhook command registration.",
+    );
   });
 });
