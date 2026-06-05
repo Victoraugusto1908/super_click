@@ -4,11 +4,42 @@ export type ClickUpApiWebhookPayload = {
   [key: string]: unknown;
 };
 
+export type ClickUpAutomationWebhookField = {
+  field_id: string;
+  value?: unknown;
+  value_options?: Record<string, unknown> | null;
+  value_deleted?: boolean;
+  type?: number;
+  [key: string]: unknown;
+};
+
+export type ClickUpAutomationWebhookListReference = {
+  list_id: string;
+  type?: string;
+  [key: string]: unknown;
+};
+
+export type ClickUpAutomationTaskTimeMgmt = {
+  date_created?: string | number | null;
+  [key: string]: unknown;
+};
+
+export type ClickUpAutomationTaskPayload = {
+  id: string;
+  name: string;
+  subcategory?: string | null;
+  lists?: ClickUpAutomationWebhookListReference[];
+  fields?: ClickUpAutomationWebhookField[];
+  tags?: string[];
+  time_mgmt?: ClickUpAutomationTaskTimeMgmt;
+  [key: string]: unknown;
+};
+
 export type ClickUpAutomationWebhookPayload = {
   auto_id: string;
   trigger_id: string;
   date: string;
-  payload: Record<string, unknown>;
+  payload: ClickUpAutomationTaskPayload;
   [key: string]: unknown;
 };
 
@@ -38,7 +69,7 @@ export function isClickUpAutomationWebhookPayload(
     typeof value.auto_id === "string" &&
     typeof value.trigger_id === "string" &&
     typeof value.date === "string" &&
-    isRecord(value.payload)
+    isClickUpAutomationTaskPayload(value.payload)
   );
 }
 
@@ -48,5 +79,66 @@ export function isClickUpWebhookPayload(
   return (
     isClickUpApiWebhookPayload(value) ||
     isClickUpAutomationWebhookPayload(value)
+  );
+}
+
+export function isClickUpAutomationTaskPayload(
+  value: unknown,
+): value is ClickUpAutomationTaskPayload {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    (value.subcategory === undefined ||
+      value.subcategory === null ||
+      typeof value.subcategory === "string") &&
+    (value.lists === undefined ||
+      (Array.isArray(value.lists) &&
+        value.lists.every(isClickUpAutomationWebhookListReference))) &&
+    (value.time_mgmt === undefined ||
+      value.time_mgmt === null ||
+      isClickUpAutomationTaskTimeMgmt(value.time_mgmt)) &&
+    (value.tags === undefined ||
+      (Array.isArray(value.tags) &&
+        value.tags.every((tag) => typeof tag === "string"))) &&
+    (value.fields === undefined ||
+      (Array.isArray(value.fields) &&
+        value.fields.every(isClickUpAutomationWebhookField)))
+  );
+}
+
+export function isClickUpAutomationWebhookField(
+  value: unknown,
+): value is ClickUpAutomationWebhookField {
+  return (
+    isRecord(value) &&
+    typeof value.field_id === "string" &&
+    (value.value_options === undefined ||
+      value.value_options === null ||
+      isRecord(value.value_options)) &&
+    (value.value_deleted === undefined || typeof value.value_deleted === "boolean") &&
+    (value.type === undefined || typeof value.type === "number")
+  );
+}
+
+export function isClickUpAutomationWebhookListReference(
+  value: unknown,
+): value is ClickUpAutomationWebhookListReference {
+  return (
+    isRecord(value) &&
+    typeof value.list_id === "string" &&
+    (value.type === undefined || typeof value.type === "string")
+  );
+}
+
+export function isClickUpAutomationTaskTimeMgmt(
+  value: unknown,
+): value is ClickUpAutomationTaskTimeMgmt {
+  return (
+    isRecord(value) &&
+    (value.date_created === undefined ||
+      value.date_created === null ||
+      typeof value.date_created === "string" ||
+      typeof value.date_created === "number")
   );
 }
