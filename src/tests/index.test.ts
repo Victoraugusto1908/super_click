@@ -297,13 +297,76 @@ describe("createClickUpWebhookHandler", () => {
     expect(command).not.toHaveBeenCalled();
   });
 
-  test("warns when NOVO_CLIENTE is not configured", async () => {
+  test("dispatches NOVO_PARCEIRO payloads using the configured source list", async () => {
+    const novoParceiroCommand = mock(async () => {});
+    const handleClickUpWebhook = createClickUpWebhookHandler({
+      novoClienteListId: "",
+      novoParceiroListId: "source-list-123",
+      novoParceiroCommand,
+    });
+    const payload = createAutomationPayload();
+
+    await handleClickUpWebhook(payload);
+
+    expect(novoParceiroCommand).toHaveBeenCalledTimes(1);
+    expect(novoParceiroCommand).toHaveBeenCalledWith(payload);
+  });
+
+  test("registers NOVO_CLIENTE and NOVO_PARCEIRO independently", async () => {
+    const novoClienteCommand = mock(async () => {});
+    const novoParceiroCommand = mock(async () => {});
+    const handleClickUpWebhook = createClickUpWebhookHandler({
+      novoClienteListId: "novo-cliente-list",
+      novoClienteCommand,
+      novoParceiroListId: "novo-parceiro-list",
+      novoParceiroCommand,
+    });
+
+    await handleClickUpWebhook(
+      createAutomationPayload({
+        payload: {
+          id: "task_123",
+          name: "Victor Augusto LTDA",
+          subcategory: "novo-cliente-list",
+          lists: [
+            {
+              list_id: "novo-cliente-list",
+              type: "home",
+            },
+          ],
+          fields: [],
+        },
+      }),
+    );
+    await handleClickUpWebhook(
+      createAutomationPayload({
+        payload: {
+          id: "task_456",
+          name: "Victor Augusto LTDA",
+          subcategory: "novo-parceiro-list",
+          lists: [
+            {
+              list_id: "novo-parceiro-list",
+              type: "home",
+            },
+          ],
+          fields: [],
+        },
+      }),
+    );
+
+    expect(novoClienteCommand).toHaveBeenCalledTimes(1);
+    expect(novoParceiroCommand).toHaveBeenCalledTimes(1);
+  });
+
+  test("warns independently when only NOVO_CLIENTE is missing", async () => {
     const logger = {
       warn: mock(() => {}),
     };
     const handleClickUpWebhook = createClickUpWebhookHandler({
       logger,
       novoClienteListId: "",
+      novoParceiroListId: "source-list-123",
     });
 
     await handleClickUpWebhook(createAutomationPayload());
@@ -312,5 +375,26 @@ describe("createClickUpWebhookHandler", () => {
     expect(logger.warn).toHaveBeenCalledWith(
       "NOVO_CLIENTE is not configured; skipping webhook command registration.",
     );
+  });
+
+  test("warns independently when only NOVO_PARCEIRO is missing", async () => {
+    const logger = {
+      warn: mock(() => {}),
+    };
+    const novoClienteCommand = mock(async () => {});
+    const handleClickUpWebhook = createClickUpWebhookHandler({
+      logger,
+      novoClienteListId: "source-list-123",
+      novoClienteCommand,
+      novoParceiroListId: "",
+    });
+
+    await handleClickUpWebhook(createAutomationPayload());
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "NOVO_PARCEIRO is not configured; skipping webhook command registration.",
+    );
+    expect(novoClienteCommand).toHaveBeenCalledTimes(1);
   });
 });
