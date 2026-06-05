@@ -65,7 +65,6 @@ export function createWebhookRouter(
       payload = await c.req.json();
     } catch {
       console.log("Invalid JSON body");
-      console.log(c.req.body);
       return c.json(
         {
           ok: false,
@@ -87,10 +86,12 @@ export function createWebhookRouter(
       );
     }
 
-    // await saveWebhookPayload(payload);
-
     console.log("Disparando mensagem em segundo plano.");
     queueMicrotask(() => {
+      void saveWebhookPayload(payload).catch((error) => {
+        logWebhookProcessingError(payload, error);
+      });
+
       void handleClickUpWebhook(payload).catch((error) => {
         logWebhookProcessingError(payload, error);
       });
