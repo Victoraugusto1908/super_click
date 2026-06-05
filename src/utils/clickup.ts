@@ -3,6 +3,27 @@ const DEFAULT_CLICKUP_API_BASE_URL = "https://api.clickup.com/api/v2";
 export type ClickUpTask = {
   id: string;
   name?: string;
+  custom_fields?: ClickUpTaskCustomField[];
+  [key: string]: unknown;
+};
+
+export type ClickUpTaskCustomFieldOption = {
+  id?: string;
+  [key: string]: unknown;
+};
+
+export type ClickUpTaskCustomField = {
+  id: string;
+  value?: unknown;
+  type_config?: {
+    options?: ClickUpTaskCustomFieldOption[];
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+};
+
+export type ClickUpListTasksResponse = {
+  tasks: ClickUpTask[];
   [key: string]: unknown;
 };
 
@@ -28,6 +49,7 @@ export type SetClickUpCustomFieldValueInput = {
 
 export type ClickUpClient = {
   createTask: (input: CreateClickUpTaskInput) => Promise<ClickUpTask>;
+  getAllTasksFromList: (listId: string) => Promise<ClickUpTask[]>;
   setCustomFieldValue: (
     input: SetClickUpCustomFieldValueInput,
   ) => Promise<void>;
@@ -137,6 +159,34 @@ export function createClickUpClient(
       }
 
       return task;
+    },
+
+    async getAllTasksFromList(listId) {
+      const tasks: ClickUpTask[] = [];
+      let page = 0;
+
+      while (true) {
+        const response = await request<ClickUpListTasksResponse>(
+          `/list/${listId}/task?page=${page}`,
+          {
+            method: "GET",
+          },
+        );
+
+        if (!Array.isArray(response.tasks)) {
+          throw new Error(
+            "ClickUp list tasks response did not include a tasks array",
+          );
+        }
+
+        tasks.push(...response.tasks);
+
+        if (response.tasks.length === 0) {
+          return tasks;
+        }
+
+        page += 1;
+      }
     },
 
     async setCustomFieldValue(input) {
