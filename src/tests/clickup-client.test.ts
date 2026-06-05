@@ -106,6 +106,108 @@ describe("createClickUpClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  test("returns tasks from all paginated list responses", async () => {
+    const fetchMock = mock(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        expect(init?.method).toBe("GET");
+
+        switch (String(input)) {
+          case "https://api.clickup.com/api/v2/list/list_123/task?page=0":
+            return new Response(
+              JSON.stringify({
+                tasks: [
+                  { id: "task_1", name: "Task 1" },
+                  { id: "task_2", name: "Task 2" },
+                ],
+              }),
+              {
+                status: 200,
+                headers: {
+                  "content-type": "application/json",
+                },
+              },
+            );
+          case "https://api.clickup.com/api/v2/list/list_123/task?page=1":
+            return new Response(
+              JSON.stringify({
+                tasks: [{ id: "task_3", name: "Task 3" }],
+              }),
+              {
+                status: 200,
+                headers: {
+                  "content-type": "application/json",
+                },
+              },
+            );
+          case "https://api.clickup.com/api/v2/list/list_123/task?page=2":
+            return new Response(JSON.stringify({ tasks: [] }), {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+              },
+            });
+          default:
+            throw new Error(`Unexpected URL: ${String(input)}`);
+        }
+      },
+    );
+    const clickUpClient = createClickUpClient({
+      apiKey: "test-api-key",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    const tasks = await clickUpClient.getAllTasksFromList("list_123");
+
+    expect(tasks).toEqual([
+      { id: "task_1", name: "Task 1" },
+      { id: "task_2", name: "Task 2" },
+      { id: "task_3", name: "Task 3" },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  test("stops paginating when the first page is empty", async () => {
+    const fetchMock = mock(async (input: string | URL | Request) => {
+      expect(String(input)).toBe(
+        "https://api.clickup.com/api/v2/list/list_123/task?page=0",
+      );
+
+      return new Response(JSON.stringify({ tasks: [] }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+    const clickUpClient = createClickUpClient({
+      apiKey: "test-api-key",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    const tasks = await clickUpClient.getAllTasksFromList("list_123");
+
+    expect(tasks).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("throws when list tasks response does not include a tasks array", async () => {
+    const clickUpClient = createClickUpClient({
+      apiKey: "test-api-key",
+      fetch: mock(async () => {
+        return new Response(JSON.stringify({ nope: [] }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+          },
+        });
+      }) as unknown as typeof fetch,
+    });
+
+    await expect(clickUpClient.getAllTasksFromList("list_123")).rejects.toThrow(
+      "ClickUp list tasks response did not include a tasks array",
+    );
+  });
+
   test("serializes value_options when updating a relationship field", async () => {
     const fetchMock = mock(
       async (input: string | URL | Request, init?: RequestInit) => {
