@@ -2,6 +2,7 @@ import {
   createPartnerCommissionTask,
   type ClickUpAutomationWebhookCommand,
 } from "../commands/create-partner-commission-task";
+import { linkPartnerRelationship } from "../commands/link-partner-relationship";
 import {
   isClickUpAutomationWebhookPayload,
   type ClickUpWebhookPayload,
@@ -18,6 +19,8 @@ type ClickUpWebhookDependencies = {
   logger?: ConsoleLike;
   novoClienteCommand?: ClickUpAutomationWebhookCommand;
   novoClienteListId?: string;
+  novoParceiroCommand?: ClickUpAutomationWebhookCommand;
+  novoParceiroListId?: string;
 };
 
 function buildCommandRegistry(
@@ -27,20 +30,31 @@ function buildCommandRegistry(
     return dependencies.commandsBySourceListId;
   }
 
+  const registry: Record<string, ClickUpAutomationWebhookCommand> = {};
   const novoClienteListId =
     dependencies.novoClienteListId ?? Bun.env.NOVO_CLIENTE?.trim();
+  const novoParceiroListId =
+    dependencies.novoParceiroListId ?? Bun.env.NOVO_PARCEIRO?.trim();
 
-  if (!novoClienteListId) {
+  if (novoClienteListId) {
+    registry[novoClienteListId] =
+      dependencies.novoClienteCommand ?? createPartnerCommissionTask;
+  } else {
     dependencies.logger?.warn(
       "NOVO_CLIENTE is not configured; skipping webhook command registration.",
     );
-    return {};
   }
 
-  return {
-    [novoClienteListId]:
-      dependencies.novoClienteCommand ?? createPartnerCommissionTask,
-  };
+  if (novoParceiroListId) {
+    registry[novoParceiroListId] =
+      dependencies.novoParceiroCommand ?? linkPartnerRelationship;
+  } else {
+    dependencies.logger?.warn(
+      "NOVO_PARCEIRO is not configured; skipping webhook command registration.",
+    );
+  }
+
+  return registry;
 }
 
 export function getAutomationSourceListId(payload: ClickUpWebhookPayload) {
