@@ -2,9 +2,15 @@ import {
   createPartnerCommissionTask,
   type ClickUpAutomationWebhookCommand,
 } from "../commands/create-partner-commission-task";
+import {
+  createCompesacaoTask,
+  type ClickUpTaskUpdatedWebhookCommand,
+} from "../commands/create-compesacao-task";
 import { linkPartnerRelationship } from "../commands/link-partner-relationship";
+import { findTriggeredCompensacaoField } from "../constants/compensacao-trigger-map";
 import {
   isClickUpAutomationWebhookPayload,
+  isClickUpTaskUpdatedWebhookPayload,
   type ClickUpWebhookPayload,
 } from "../types/clickup-webhook";
 
@@ -16,6 +22,8 @@ export type ClickUpWebhookHandler = (
 
 type ClickUpWebhookDependencies = {
   commandsBySourceListId?: Record<string, ClickUpAutomationWebhookCommand>;
+  compesacaoCommand?: ClickUpTaskUpdatedWebhookCommand;
+  compesacaoListId?: string;
   logger?: ConsoleLike;
   novoClienteCommand?: ClickUpAutomationWebhookCommand;
   novoClienteListId?: string;
@@ -23,7 +31,7 @@ type ClickUpWebhookDependencies = {
   novoParceiroListId?: string;
 };
 
-function buildCommandRegistry(
+function buildAutomationCommandRegistry(
   dependencies: ClickUpWebhookDependencies,
 ): Record<string, ClickUpAutomationWebhookCommand> {
   if (dependencies.commandsBySourceListId) {
@@ -69,33 +77,56 @@ export function createClickUpWebhookHandler(
   dependencies: ClickUpWebhookDependencies = {},
 ): ClickUpWebhookHandler {
   const logger = dependencies.logger ?? console;
-  const commandsBySourceListId = buildCommandRegistry({
+  const commandsBySourceListId = buildAutomationCommandRegistry({
     ...dependencies,
     logger,
   });
+  const compesacaoListId =
+    dependencies.compesacaoListId ?? Bun.env.COMPESACAO?.trim();
+  const compesacaoCommand =
+    dependencies.compesacaoCommand ?? createCompesacaoTask;
+
+  if (!compesacaoListId) {
+    logger.warn(
+      "COMPESACAO is not configured; skipping webhook command registration.",
+    );
+  }
 
   return async (payload) => {
-    if (!isClickUpAutomationWebhookPayload(payload)) {
+    if (isClickUpAutomationWebhookPayload(payload)) {
+      const sourceListId = getAutomationSourceListId(payload);
+
+      if (!sourceListId) {
+        logger.warn("ClickUp automation payload is missing a source list id.", {
+          taskId: payload.payload.id,
+          automationId: payload.auto_id,
+        });
+        return;
+      }
+
+      const command = commandsBySourceListId[sourceListId];
+
+      if (!command) {
+        return;
+      }
+
+      await command(payload);
       return;
     }
 
-    const sourceListId = getAutomationSourceListId(payload);
-
-    if (!sourceListId) {
-      logger.warn("ClickUp automation payload is missing a source list id.", {
-        taskId: payload.payload.id,
-        automationId: payload.auto_id,
-      });
+    if (!isClickUpTaskUpdatedWebhookPayload(payload)) {
       return;
     }
 
-    const command = commandsBySourceListId[sourceListId];
-
-    if (!command) {
+    if (!compesacaoListId) {
       return;
     }
 
-    await command(payload);
+    if (!findTriggeredCompensacaoField(payload.history_items)) {
+      return;
+    }
+
+    await compesacaoCommand(payload);
   };
 }
 
