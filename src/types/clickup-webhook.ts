@@ -4,6 +4,24 @@ export type ClickUpApiWebhookPayload = {
   [key: string]: unknown;
 };
 
+export type ClickUpTaskUpdatedWebhookCustomField = {
+  id: string;
+  [key: string]: unknown;
+};
+
+export type ClickUpTaskUpdatedWebhookHistoryItem = {
+  field: string;
+  before?: unknown;
+  after?: unknown;
+  custom_field?: ClickUpTaskUpdatedWebhookCustomField;
+  [key: string]: unknown;
+};
+
+export type ClickUpTaskUpdatedWebhookPayload = ClickUpApiWebhookPayload & {
+  task_id: string;
+  history_items: ClickUpTaskUpdatedWebhookHistoryItem[];
+};
+
 export type ClickUpAutomationWebhookField = {
   field_id: string;
   value?: unknown;
@@ -19,6 +37,12 @@ export type ClickUpAutomationWebhookListReference = {
   [key: string]: unknown;
 };
 
+export type ClickUpAutomationWebhookRelatedTask = {
+  task_id: string;
+  type?: string;
+  [key: string]: unknown;
+};
+
 export type ClickUpAutomationTaskTimeMgmt = {
   date_created?: string | number | null;
   [key: string]: unknown;
@@ -29,6 +53,7 @@ export type ClickUpAutomationTaskPayload = {
   name: string;
   subcategory?: string | null;
   lists?: ClickUpAutomationWebhookListReference[];
+  related_tasks?: ClickUpAutomationWebhookRelatedTask[];
   fields?: ClickUpAutomationWebhookField[];
   tags?: string[];
   time_mgmt?: ClickUpAutomationTaskTimeMgmt;
@@ -44,6 +69,7 @@ export type ClickUpAutomationWebhookPayload = {
 };
 
 export type ClickUpWebhookPayload =
+  | ClickUpTaskUpdatedWebhookPayload
   | ClickUpApiWebhookPayload
   | ClickUpAutomationWebhookPayload;
 
@@ -73,6 +99,18 @@ export function isClickUpAutomationWebhookPayload(
   );
 }
 
+export function isClickUpTaskUpdatedWebhookPayload(
+  value: unknown,
+): value is ClickUpTaskUpdatedWebhookPayload {
+  return (
+    isClickUpApiWebhookPayload(value) &&
+    value.event === "taskUpdated" &&
+    typeof value.task_id === "string" &&
+    Array.isArray(value.history_items) &&
+    value.history_items.every(isClickUpTaskUpdatedWebhookHistoryItem)
+  );
+}
+
 export function isClickUpWebhookPayload(
   value: unknown,
 ): value is ClickUpWebhookPayload {
@@ -95,6 +133,9 @@ export function isClickUpAutomationTaskPayload(
     (value.lists === undefined ||
       (Array.isArray(value.lists) &&
         value.lists.every(isClickUpAutomationWebhookListReference))) &&
+    (value.related_tasks === undefined ||
+      (Array.isArray(value.related_tasks) &&
+        value.related_tasks.every(isClickUpAutomationWebhookRelatedTask))) &&
     (value.time_mgmt === undefined ||
       value.time_mgmt === null ||
       isClickUpAutomationTaskTimeMgmt(value.time_mgmt)) &&
@@ -121,12 +162,39 @@ export function isClickUpAutomationWebhookField(
   );
 }
 
+export function isClickUpTaskUpdatedWebhookHistoryItem(
+  value: unknown,
+): value is ClickUpTaskUpdatedWebhookHistoryItem {
+  return (
+    isRecord(value) &&
+    typeof value.field === "string" &&
+    (value.custom_field === undefined ||
+      isClickUpTaskUpdatedWebhookCustomField(value.custom_field))
+  );
+}
+
+export function isClickUpTaskUpdatedWebhookCustomField(
+  value: unknown,
+): value is ClickUpTaskUpdatedWebhookCustomField {
+  return isRecord(value) && typeof value.id === "string";
+}
+
 export function isClickUpAutomationWebhookListReference(
   value: unknown,
 ): value is ClickUpAutomationWebhookListReference {
   return (
     isRecord(value) &&
     typeof value.list_id === "string" &&
+    (value.type === undefined || typeof value.type === "string")
+  );
+}
+
+export function isClickUpAutomationWebhookRelatedTask(
+  value: unknown,
+): value is ClickUpAutomationWebhookRelatedTask {
+  return (
+    isRecord(value) &&
+    typeof value.task_id === "string" &&
     (value.type === undefined || typeof value.type === "string")
   );
 }
