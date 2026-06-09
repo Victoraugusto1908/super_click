@@ -48,14 +48,14 @@ function extractPayloadPartnerValue(
   return typeof field.value === "string" ? field.value : String(field.value);
 }
 
-function findTaskCustomField(
+export function findTaskCustomField(
   task: ClickUpTask,
   fieldId: string,
 ): ClickUpTaskCustomField | undefined {
   return task.custom_fields?.find((field) => field.id === fieldId);
 }
 
-function normalizePartnerFieldValue(
+export function normalizePartnerFieldValue(
   customField: ClickUpTaskCustomField | undefined,
 ): string | undefined {
   if (!customField) {
@@ -91,7 +91,7 @@ function normalizePartnerFieldValue(
   return undefined;
 }
 
-function findMatchingPartnerTask(
+export function findMatchingPartnerTask(
   tasks: readonly ClickUpTask[],
   partnerValue: string,
 ): ClickUpTask | undefined {
@@ -102,7 +102,9 @@ function findMatchingPartnerTask(
   });
 }
 
-function extractCommissionRuleValue(task: ClickUpTask): string | undefined {
+export function extractCommissionRuleValue(
+  task: ClickUpTask,
+): string | undefined {
   const customField = findTaskCustomField(task, COMMISSION_RULE_FIELD_ID);
 
   if (customField?.value === undefined || customField.value === null) {
