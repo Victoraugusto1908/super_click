@@ -3,7 +3,20 @@ const DEFAULT_CLICKUP_API_BASE_URL = "https://api.clickup.com/api/v2";
 export type ClickUpTask = {
   id: string;
   name?: string;
+  date_created?: string | number | null;
+  tags?: unknown[];
   custom_fields?: ClickUpTaskCustomField[];
+  linked_tasks?: ClickUpTaskLink[];
+  list?: {
+    id?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+};
+
+export type ClickUpTaskLink = {
+  task_id: string;
+  link_id?: string;
   [key: string]: unknown;
 };
 
@@ -47,9 +60,17 @@ export type SetClickUpCustomFieldValueInput = {
   valueOptions?: Record<string, unknown>;
 };
 
+export type CreateClickUpTaskCommentInput = {
+  taskId: string;
+  commentText: string;
+  notifyAll: boolean;
+};
+
 export type ClickUpClient = {
   createTask: (input: CreateClickUpTaskInput) => Promise<ClickUpTask>;
+  getTask: (taskId: string) => Promise<ClickUpTask>;
   getAllTasksFromList: (listId: string) => Promise<ClickUpTask[]>;
+  createTaskComment: (input: CreateClickUpTaskCommentInput) => Promise<void>;
   setCustomFieldValue: (
     input: SetClickUpCustomFieldValueInput,
   ) => Promise<void>;
@@ -161,6 +182,12 @@ export function createClickUpClient(
       return task;
     },
 
+    async getTask(taskId) {
+      return request<ClickUpTask>(`/task/${taskId}`, {
+        method: "GET",
+      });
+    },
+
     async getAllTasksFromList(listId) {
       const tasks: ClickUpTask[] = [];
       let page = 0;
@@ -202,6 +229,16 @@ export function createClickUpClient(
       await request(`/task/${input.taskId}/field/${input.fieldId}`, {
         method: "POST",
         body: JSON.stringify(body),
+      });
+    },
+
+    async createTaskComment(input) {
+      await request(`/task/${input.taskId}/comment`, {
+        method: "POST",
+        body: JSON.stringify({
+          comment_text: input.commentText,
+          notify_all: input.notifyAll,
+        }),
       });
     },
   };
