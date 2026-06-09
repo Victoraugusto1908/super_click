@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import {
   isClickUpApiWebhookPayload,
   isClickUpAutomationWebhookPayload,
+  isClickUpTaskUpdatedWebhookPayload,
   isClickUpWebhookPayload,
   type ClickUpWebhookPayload,
 } from "../types/clickup-webhook";
@@ -19,14 +20,30 @@ type WebhookRouteDependencies = {
 async function saveWebhookPayloadToFile(
   payload: ClickUpWebhookPayload,
 ): Promise<void> {
-  if (!isClickUpAutomationWebhookPayload(payload)) {
+  const logFilename = getWebhookPayloadLogFilename(payload);
+
+  if (!logFilename) {
     return;
   }
 
   await Bun.write(
-    `logs/${payload.payload.id}.json`,
+    `logs/${logFilename}.json`,
     `${JSON.stringify(payload, null, 2)}\n`,
   );
+}
+
+export function getWebhookPayloadLogFilename(payload: ClickUpWebhookPayload) {
+  if (isClickUpAutomationWebhookPayload(payload)) {
+    return payload.payload.id;
+  }
+
+  if (isClickUpTaskUpdatedWebhookPayload(payload)) {
+    const firstHistoryItemId = payload.history_items[0]?.id;
+
+    return typeof firstHistoryItemId === "string" ? firstHistoryItemId : undefined;
+  }
+
+  return undefined;
 }
 
 function logWebhookProcessingError(
