@@ -66,7 +66,7 @@ export function isCompensacaoBoletoPedido(
 export function findTriggeredCompensacaoField(
   historyItems: readonly ClickUpTaskUpdatedWebhookHistoryItem[] | undefined,
 ) {
-  return historyItems?.find((historyItem) => {
+  const triggeredHistoryItem = historyItems?.find((historyItem) => {
     if (historyItem.field !== "custom_field") {
       return false;
     }
@@ -79,4 +79,12 @@ export function findTriggeredCompensacaoField(
 
     return isCompensacaoBoletoPedido(fieldId, historyItem.after);
   });
+
+  const triggeredActionFieldId = triggeredHistoryItem?.custom_field?.id;
+
+  if (typeof triggeredActionFieldId !== "string") {
+    return undefined;
+  }
+
+  return getCompensacaoTriggerByActionFieldId(triggeredActionFieldId);
 }
