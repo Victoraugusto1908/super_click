@@ -200,7 +200,9 @@ describe("createPartnerCommissionTaskCommand", () => {
           id: "created-task-123",
         };
       }),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async ({ fieldId }: { fieldId: string }) => {
         callSequence.push(`setCustomFieldValue:${fieldId}`);
       }),
@@ -258,7 +260,9 @@ describe("createPartnerCommissionTaskCommand", () => {
       createTask: mock(async () => ({
         id: "created-task-123",
       })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createPartnerCommissionTaskCommand({
@@ -328,7 +332,9 @@ describe("createPartnerCommissionTaskCommand", () => {
       createTask: mock(async () => ({
         id: "created-task-123",
       })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createPartnerCommissionTaskCommand({
