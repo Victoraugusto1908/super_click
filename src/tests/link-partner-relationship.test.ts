@@ -49,7 +49,9 @@ describe("createLinkPartnerRelationshipCommand", () => {
   test("ignores payloads without the partner field", async () => {
     const clickUpClient = {
       createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createLinkPartnerRelationshipCommand({
@@ -66,7 +68,9 @@ describe("createLinkPartnerRelationshipCommand", () => {
   test("ignores deleted partner field values", async () => {
     const clickUpClient = {
       createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createLinkPartnerRelationshipCommand({
@@ -88,7 +92,9 @@ describe("createLinkPartnerRelationshipCommand", () => {
   test("ignores empty partner field values", async () => {
     const clickUpClient = {
       createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createLinkPartnerRelationshipCommand({
@@ -112,6 +118,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
     };
     const clickUpClient = {
       createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => [
         {
           id: "partner-task-1",
@@ -123,6 +130,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
           ],
         },
       ]),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createLinkPartnerRelationshipCommand({
@@ -155,6 +163,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
   test("links the partner relationship when the task field already stores the option id", async () => {
     const clickUpClient = {
       createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => [
         {
           id: "partner-task-1",
@@ -170,6 +179,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
           ],
         },
       ]),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createLinkPartnerRelationshipCommand({
@@ -200,6 +210,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
   test("links the partner relationship when the task field uses the dropdown index", async () => {
     const clickUpClient = {
       createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => [
         {
           id: "partner-task-1",
@@ -223,6 +234,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
           ],
         },
       ]),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createLinkPartnerRelationshipCommand({
@@ -253,6 +265,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
   test("uses the first matching partner task when there are duplicates", async () => {
     const clickUpClient = {
       createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => [
         {
           id: "partner-task-1",
@@ -281,6 +294,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
           ],
         },
       ]),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createLinkPartnerRelationshipCommand({
@@ -311,6 +325,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
   test("skips commission rule update when the matched partner task has no value", async () => {
     const clickUpClient = {
       createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () => ({ id: "unused" })),
       getAllTasksFromList: mock(async () => [
         {
           id: "partner-task-1",
@@ -322,6 +337,7 @@ describe("createLinkPartnerRelationshipCommand", () => {
           ],
         },
       ]),
+      createTaskComment: mock(async () => {}),
       setCustomFieldValue: mock(async () => {}),
     };
     const command = createLinkPartnerRelationshipCommand({
@@ -349,7 +365,9 @@ describe("createLinkPartnerRelationshipCommand", () => {
     const command = createLinkPartnerRelationshipCommand({
       clickUpClient: {
         createTask: mock(async () => ({ id: "unused" })),
+        getTask: mock(async () => ({ id: "unused" })),
         getAllTasksFromList: mock(async () => []),
+        createTaskComment: mock(async () => {}),
         setCustomFieldValue: mock(async () => {}),
       },
       partnersListId: "",
