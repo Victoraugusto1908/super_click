@@ -106,6 +106,42 @@ describe("createClickUpClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  test("retrieves a task by id", async () => {
+    const fetchMock = mock(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        expect(String(input)).toBe(
+          "https://api.clickup.com/api/v2/task/task_123",
+        );
+        expect(init?.method).toBe("GET");
+
+        return new Response(
+          JSON.stringify({
+            id: "task_123",
+            name: "Victor Augusto LTDA",
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        );
+      },
+    );
+    const clickUpClient = createClickUpClient({
+      apiKey: "test-api-key",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    const task = await clickUpClient.getTask("task_123");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(task).toEqual({
+      id: "task_123",
+      name: "Victor Augusto LTDA",
+    });
+  });
+
   test("returns tasks from all paginated list responses", async () => {
     const fetchMock = mock(
       async (input: string | URL | Request, init?: RequestInit) => {
@@ -283,6 +319,42 @@ describe("createClickUpClient", () => {
       value: {
         add: [12345678],
       },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("creates a task comment", async () => {
+    const fetchMock = mock(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        expect(String(input)).toBe(
+          "https://api.clickup.com/api/v2/task/task_123/comment",
+        );
+        expect(init?.method).toBe("POST");
+        expect(init?.body).toBe(
+          JSON.stringify({
+            comment_text: "comment body",
+            notify_all: false,
+          }),
+        );
+
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+          },
+        });
+      },
+    );
+    const clickUpClient = createClickUpClient({
+      apiKey: "test-api-key",
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    await clickUpClient.createTaskComment({
+      taskId: "task_123",
+      commentText: "comment body",
+      notifyAll: false,
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
