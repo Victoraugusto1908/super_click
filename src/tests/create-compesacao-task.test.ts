@@ -9,6 +9,7 @@ import {
 import {
   DESTINATION_CNPJ_FIELD_ID,
   DESTINATION_CLIENT_RELATIONSHIP_FIELD_ID,
+  DESTINATION_PAYMENT_PARTNER_FIELD_ID,
   DESTINATION_RAZAO_SOCIAL_FIELD_ID,
   FIRST_PAYMENT_DATE_FIELD_ID,
 } from "../commands/partner-commission-task-shared";
@@ -19,12 +20,9 @@ const COMPESACAO_LIST_ID = "compesacao-list-123";
 const CLIENT_TASK_ID = "client-task-123";
 const RELATED_TASK_ID = "related-task-456";
 const SOURCE_TASK_ID = "comp-task-123";
-const DESTINATION_AMOUNT_FIELD_ID = "acbf6ea7-cc78-4bd1-b7b1-6dda5f36ba81";
 const PRIMARY_ACTION_FIELD_ID = "af361038-0079-4975-8de0-a8dbe409be76";
 const PRIMARY_ACTION_OPTION_ID = "c2b7e40d-516b-4986-be35-3fcef5f99cef";
 const PRIMARY_VALUE_FIELD_ID = "45128f22-7712-4fd1-8ee9-fb6fb6ffa08e";
-const SECONDARY_ACTION_FIELD_ID = "acfca708-e282-427d-86d5-b15449cce929";
-const SECONDARY_ACTION_OPTION_ID = "81601c1e-59ee-4ecd-a349-542559b39a2d";
 const SECONDARY_VALUE_FIELD_ID = "dfaa24a8-0c61-4461-9e69-8aa2c74bc0f9";
 
 function createTaskUpdatedPayload(
@@ -247,6 +245,12 @@ describe("createCompesacaoTaskCommand", () => {
     });
     expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
       taskId: "created-task-123",
+      fieldId: DESTINATION_PAYMENT_PARTNER_FIELD_ID,
+      value: 1783666800000,
+      valueOptions: undefined,
+    });
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
+      taskId: "created-task-123",
       fieldId: "ec16180c-8ece-4a86-8d8d-4cfc9965fbd1",
       value: {
         add: [290658850],
@@ -275,12 +279,6 @@ describe("createCompesacaoTaskCommand", () => {
     });
     expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
       taskId: "created-task-123",
-      fieldId: DESTINATION_AMOUNT_FIELD_ID,
-      value: "1500000",
-      valueOptions: undefined,
-    });
-    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
-      taskId: "created-task-123",
       fieldId: DESTINATION_PARTNER_RELATIONSHIP_FIELD_ID,
       value: {
         add: ["partner-task-1"],
@@ -295,7 +293,7 @@ describe("createCompesacaoTaskCommand", () => {
     });
   });
 
-  test("uses the value field mapped to the history item trigger", async () => {
+  test("skips Data Pagamento Parceiro when the client has no first payment date", async () => {
     const clickUpClient = {
       createTask: mock(async () => ({ id: "created-task-123" })),
       getTask: mock(async (taskId: string) => {
@@ -308,7 +306,14 @@ describe("createCompesacaoTaskCommand", () => {
         }
 
         if (taskId === CLIENT_TASK_ID) {
-          return createClientTask();
+          const clientTask = createClientTask();
+
+          return {
+            ...clientTask,
+            custom_fields: clientTask.custom_fields.filter(
+              (field) => field.id !== FIRST_PAYMENT_DATE_FIELD_ID,
+            ),
+          };
         }
 
         throw new Error(`Unexpected task lookup: ${taskId}`);
@@ -325,32 +330,14 @@ describe("createCompesacaoTaskCommand", () => {
       partnersListId: "partners-list-123",
     });
 
-    await command(
-      createTaskUpdatedPayload({
-        history_items: [
-          {
-            field: "custom_field",
-            after: SECONDARY_ACTION_OPTION_ID,
-            custom_field: {
-              id: SECONDARY_ACTION_FIELD_ID,
-            },
-          },
-        ],
-      }),
-    );
+    await command(createTaskUpdatedPayload());
 
-    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
+    expect(clickUpClient.setCustomFieldValue).not.toHaveBeenCalledWith({
       taskId: "created-task-123",
-      fieldId: DESTINATION_AMOUNT_FIELD_ID,
-      value: "2750000",
+      fieldId: DESTINATION_PAYMENT_PARTNER_FIELD_ID,
+      value: 1783666800000,
       valueOptions: undefined,
     });
-    expect(clickUpClient.setCustomFieldValue).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        fieldId: DESTINATION_AMOUNT_FIELD_ID,
-        value: "1500000",
-      }),
-    );
   });
 
   test("ignores tasks outside the configured COMPESACAO list", async () => {
@@ -551,54 +538,4 @@ describe("createCompesacaoTaskCommand", () => {
     );
   });
 
-  test("creates the task, skips the amount update, and comments when the mapped amount field is empty", async () => {
-    const clickUpClient = {
-      createTask: mock(async () => ({ id: "created-task-123" })),
-      getTask: mock(async (taskId: string) => {
-        if (taskId === SOURCE_TASK_ID) {
-          return createSourceTask({
-            customFields: [
-              {
-                id: PRIMARY_VALUE_FIELD_ID,
-                value: "",
-              },
-            ],
-          });
-        }
-
-        if (taskId === RELATED_TASK_ID) {
-          return createRelatedTask();
-        }
-
-        if (taskId === CLIENT_TASK_ID) {
-          return createClientTask();
-        }
-
-        throw new Error(`Unexpected task lookup: ${taskId}`);
-      }),
-      getAllTasksFromList: mock(async () => [createPartnerTask()]),
-      createTaskComment: mock(async () => {}),
-      setCustomFieldValue: mock(async () => {}),
-    };
-    const command = createCompesacaoTaskCommand({
-      clickUpClient,
-      compesacaoListId: COMPESACAO_LIST_ID,
-      partnersListId: "partners-list-123",
-    });
-
-    await command(createTaskUpdatedPayload());
-
-    expect(clickUpClient.createTask).toHaveBeenCalledTimes(1);
-    expect(clickUpClient.setCustomFieldValue).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        fieldId: DESTINATION_AMOUNT_FIELD_ID,
-      }),
-    );
-    expect(clickUpClient.createTaskComment).toHaveBeenCalledWith({
-      taskId: SOURCE_TASK_ID,
-      commentText:
-        "Fluxo COMPESACAO criou a task de destino sem valor compensado/restituído. sourceTaskId=comp-task-123 actionFieldId=af361038-0079-4975-8de0-a8dbe409be76 valueFieldId=45128f22-7712-4fd1-8ee9-fb6fb6ffa08e",
-      notifyAll: false,
-    });
-  });
 });
