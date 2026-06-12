@@ -50,8 +50,11 @@ export const DESTINATION_RAZAO_SOCIAL_FIELD_ID =
   "3b0f0be7-438c-4129-9e4a-dad32effdc57";
 export const DESTINATION_CNPJ_FIELD_ID =
   "436b89e7-a566-487b-becb-8e0091893a14";
+export const DESTINATION_PAYMENT_PARTNER_FIELD_ID =
+  "3cbadb57-3c91-41b0-bba6-d072fa60438e";
 export const FIRST_PAYMENT_DATE_FIELD_ID =
   "ddb374d1-6293-4d9c-b907-447bf123c38a";
+export const PAYMENT_PARTNER_DATE_OFFSET_IN_MS = 10 * 24 * 60 * 60 * 1000;
 export const SOURCE_RAZAO_SOCIAL_FIELD_ID =
   "14fb928b-77fe-4d9b-8979-93ebc14b5ec9";
 export const SOURCE_CNPJ_FIELD_ID = "fb911467-4b4e-468a-8769-e98be89594ff";
@@ -324,24 +327,35 @@ export function buildPartnerCommissionCustomFieldUpdatesFromSource(
     overrideUpdates?: readonly CustomFieldUpdate[];
   },
 ): CustomFieldUpdate[] {
-  const mappedFieldUpdates = FIELD_MAPPINGS.flatMap((mapping) => {
+  const mappedFieldUpdates: CustomFieldUpdate[] = [];
+
+  for (const mapping of FIELD_MAPPINGS) {
     const sourceValue = findNormalizedFieldValue(source.fields, mapping.sourceFieldId);
 
     if (!sourceValue) {
-      return [];
+      continue;
     }
 
-    return [
-      {
-        fieldId: mapping.destinationFieldId,
-        value: buildDestinationFieldValue(
-          mapping.destinationFieldId,
-          sourceValue.value,
-        ),
-        valueOptions: sourceValue.valueOptions,
-      },
-    ];
-  });
+    mappedFieldUpdates.push({
+      fieldId: mapping.destinationFieldId,
+      value: buildDestinationFieldValue(
+        mapping.destinationFieldId,
+        sourceValue.value,
+      ),
+      valueOptions: sourceValue.valueOptions,
+    });
+
+    if (mapping.sourceFieldId === FIRST_PAYMENT_DATE_FIELD_ID) {
+      const firstPaymentDate = parseTimestamp(sourceValue.value);
+
+      if (firstPaymentDate !== undefined) {
+        mappedFieldUpdates.push({
+          fieldId: DESTINATION_PAYMENT_PARTNER_FIELD_ID,
+          value: firstPaymentDate + PAYMENT_PARTNER_DATE_OFFSET_IN_MS,
+        });
+      }
+    }
+  }
 
   return mergeCustomFieldUpdates(
     [
