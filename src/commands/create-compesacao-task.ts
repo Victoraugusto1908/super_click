@@ -19,7 +19,6 @@ import {
   type CustomFieldUpdate,
   type PartnerCommissionTaskCommandDependencies,
 } from "./partner-commission-task-shared";
-import { findTriggeredCompensacaoField } from "../constants/compensacao-trigger-map";
 import type { ClickUpTaskUpdatedWebhookPayload } from "../types/clickup-webhook";
 import {
   createClickUpClient,
@@ -42,19 +41,10 @@ export type ClickUpTaskUpdatedWebhookCommand = (
 ) => Promise<void>;
 
 const RELATED_CLIENT_FIELD_ID = "49414079-b1ff-4644-ac85-71a5448424cc";
-const DESTINATION_AMOUNT_FIELD_ID = "acbf6ea7-cc78-4bd1-b7b1-6dda5f36ba81";
 
 type RelatedTaskReferenceValue = {
   id?: string;
   [key: string]: unknown;
-};
-
-type CompesacaoOverrideUpdatesResult = {
-  overrideUpdates: CustomFieldUpdate[];
-  missingTriggeredAmountField?: {
-    actionFieldId: string;
-    valueFieldId: string;
-  };
 };
 
 function isRelatedTaskReferenceValue(
@@ -106,13 +96,9 @@ async function commentAndAbort(
 
 function buildCompesacaoOverrideUpdates(
   sourceTask: ClickUpTask,
-  payload: ClickUpTaskUpdatedWebhookPayload,
-): CompesacaoOverrideUpdatesResult {
+): CustomFieldUpdate[] {
   const normalizedCompesacaoTask = normalizeClickUpTask(sourceTask);
   const overrideUpdates: CustomFieldUpdate[] = [];
-  const triggeredCompensacaoField = findTriggeredCompensacaoField(
-    payload.history_items,
-  );
   const razaoSocialValue = findNormalizedFieldValue(
     normalizedCompesacaoTask.fields,
     SOURCE_RAZAO_SOCIAL_FIELD_ID,
@@ -138,35 +124,7 @@ function buildCompesacaoOverrideUpdates(
     });
   }
 
-  if (triggeredCompensacaoField) {
-    const triggeredAmountField = findTaskCustomField(
-      sourceTask,
-      triggeredCompensacaoField.valueFieldId,
-    );
-
-    if (
-      triggeredAmountField?.value !== undefined &&
-      triggeredAmountField.value !== null &&
-      triggeredAmountField.value !== ""
-    ) {
-      overrideUpdates.push({
-        fieldId: DESTINATION_AMOUNT_FIELD_ID,
-        value: triggeredAmountField.value,
-      });
-    } else {
-      return {
-        overrideUpdates,
-        missingTriggeredAmountField: {
-          actionFieldId: triggeredCompensacaoField.actionFieldId,
-          valueFieldId: triggeredCompensacaoField.valueFieldId,
-        },
-      };
-    }
-  }
-
-  return {
-    overrideUpdates,
-  };
+  return overrideUpdates;
 }
 
 function resolveClientPartnerValue(clientTask: ClickUpTask): string | undefined {
@@ -274,12 +232,12 @@ export function createCompesacaoTaskCommand(
         dependencies,
       ),
     );
-    const compesacaoOverrides = buildCompesacaoOverrideUpdates(sourceTask, payload);
+    const compesacaoOverrides = buildCompesacaoOverrideUpdates(sourceTask);
     const customFieldUpdates = buildPartnerCommissionCustomFieldUpdatesFromSource(
       normalizedClientTask,
       {
         clientRelationshipTaskId: clientTask.id,
-        overrideUpdates: compesacaoOverrides.overrideUpdates,
+        overrideUpdates: compesacaoOverrides,
       },
     );
 
@@ -305,18 +263,6 @@ export function createCompesacaoTaskCommand(
         fieldId: customFieldUpdate.fieldId,
         value: customFieldUpdate.value,
         valueOptions: customFieldUpdate.valueOptions,
-      });
-    }
-
-    if (compesacaoOverrides.missingTriggeredAmountField) {
-      await clickUpClient.createTaskComment({
-        taskId: sourceTask.id,
-        commentText:
-          "Fluxo COMPESACAO criou a task de destino sem valor compensado/restituído. " +
-          `sourceTaskId=${sourceTask.id} ` +
-          `actionFieldId=${compesacaoOverrides.missingTriggeredAmountField.actionFieldId} ` +
-          `valueFieldId=${compesacaoOverrides.missingTriggeredAmountField.valueFieldId}`,
-        notifyAll: false,
       });
     }
   };
