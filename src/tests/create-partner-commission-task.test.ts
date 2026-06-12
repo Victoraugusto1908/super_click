@@ -5,6 +5,10 @@ import {
   buildPartnerCommissionTaskInput,
   createPartnerCommissionTaskCommand,
 } from "../commands/create-partner-commission-task";
+import {
+  DESTINATION_PAYMENT_PARTNER_FIELD_ID,
+  FIRST_PAYMENT_DATE_FIELD_ID,
+} from "../commands/partner-commission-task-shared";
 import type { ClickUpAutomationWebhookPayload } from "../types/clickup-webhook";
 
 function createAutomationPayload(): ClickUpAutomationWebhookPayload {
@@ -48,7 +52,7 @@ function createAutomationPayload(): ClickUpAutomationWebhookPayload {
           type: 1,
         },
         {
-          field_id: "ddb374d1-6293-4d9c-b907-447bf123c38a",
+          field_id: FIRST_PAYMENT_DATE_FIELD_ID,
           value: 1782802800000,
           type: 4,
         },
@@ -95,8 +99,13 @@ describe("buildPartnerCommissionCustomFieldUpdates", () => {
         valueOptions: undefined,
       },
       {
-        fieldId: "ddb374d1-6293-4d9c-b907-447bf123c38a",
+        fieldId: FIRST_PAYMENT_DATE_FIELD_ID,
         value: 1782802800000,
+        valueOptions: undefined,
+      },
+      {
+        fieldId: DESTINATION_PAYMENT_PARTNER_FIELD_ID,
+        value: 1783666800000,
         valueOptions: undefined,
       },
       {
@@ -153,8 +162,7 @@ describe("buildPartnerCommissionTaskInput", () => {
         payload: {
           ...createAutomationPayload().payload,
           fields: createAutomationPayload().payload.fields?.filter(
-            (field) =>
-              field.field_id !== "ddb374d1-6293-4d9c-b907-447bf123c38a",
+            (field) => field.field_id !== FIRST_PAYMENT_DATE_FIELD_ID,
           ),
         },
       },
@@ -225,19 +233,26 @@ describe("createPartnerCommissionTaskCommand", () => {
       priority: 2,
       assignees: undefined,
     });
-    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledTimes(8);
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledTimes(9);
     expect(callSequence[0]).toBe("createTask");
     expect(callSequence.slice(1)).toEqual([
       "setCustomFieldValue:11a7f636-c49e-4423-b9d5-85fb4fc2fd52",
       "setCustomFieldValue:50839e8d-bcdb-49fd-958d-1a4ee1987fa5",
       "setCustomFieldValue:9dad0502-6c3a-4aff-bb58-ddcc8857ebb0",
       "setCustomFieldValue:ddb374d1-6293-4d9c-b907-447bf123c38a",
+      "setCustomFieldValue:3cbadb57-3c91-41b0-bba6-d072fa60438e",
       "setCustomFieldValue:3b0f0be7-438c-4129-9e4a-dad32effdc57",
       "setCustomFieldValue:436b89e7-a566-487b-becb-8e0091893a14",
       "setCustomFieldValue:ec16180c-8ece-4a86-8d8d-4cfc9965fbd1",
       "setCustomFieldValue:2bfd292d-e0c9-486f-8fd1-e5f6e37654b7",
     ]);
-    expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(7, {
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(5, {
+      taskId: "created-task-123",
+      fieldId: DESTINATION_PAYMENT_PARTNER_FIELD_ID,
+      value: 1783666800000,
+      valueOptions: undefined,
+    });
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(8, {
       taskId: "created-task-123",
       fieldId: "ec16180c-8ece-4a86-8d8d-4cfc9965fbd1",
       value: {
@@ -245,7 +260,7 @@ describe("createPartnerCommissionTaskCommand", () => {
       },
       valueOptions: undefined,
     });
-    expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(8, {
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(9, {
       taskId: "created-task-123",
       fieldId: "2bfd292d-e0c9-486f-8fd1-e5f6e37654b7",
       value: {
@@ -307,15 +322,19 @@ describe("createPartnerCommissionTaskCommand", () => {
       payload: {
         ...createAutomationPayload().payload,
         fields: createAutomationPayload().payload.fields?.filter(
-          (field) =>
-            field.field_id !== "ddb374d1-6293-4d9c-b907-447bf123c38a",
+          (field) => field.field_id !== FIRST_PAYMENT_DATE_FIELD_ID,
         ),
       },
     });
 
     expect(updates).not.toContainEqual({
-      fieldId: "ddb374d1-6293-4d9c-b907-447bf123c38a",
+      fieldId: FIRST_PAYMENT_DATE_FIELD_ID,
       value: 1782802800000,
+      valueOptions: undefined,
+    });
+    expect(updates).not.toContainEqual({
+      fieldId: DESTINATION_PAYMENT_PARTNER_FIELD_ID,
+      value: 1783666800000,
       valueOptions: undefined,
     });
     expect(updates).toContainEqual({
