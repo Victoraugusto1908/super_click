@@ -41,6 +41,10 @@ export type ClickUpTaskUpdatedWebhookCommand = (
 ) => Promise<void>;
 
 const RELATED_CLIENT_FIELD_ID = "49414079-b1ff-4644-ac85-71a5448424cc";
+const FIRST_COMPENSACAO_FIELD_ID = "76ba8d34-199d-4dc2-8151-161d5fa5e7c8";
+const FIRST_COMPENSACAO_YES_OPTION_ID = "9c3a52f3-568e-42b8-99ae-4f274c6bdd11";
+const DESTINATION_COMMISSION_VALUE_FIELD_ID =
+  "36323f4b-8384-443b-819b-e8e5b67370c3";
 
 type RelatedTaskReferenceValue = {
   id?: string;
@@ -71,6 +75,55 @@ function findFirstLinkedTaskId(sourceTask: ClickUpTask) {
   return typeof firstLinkedTask?.link_id === "string"
     ? firstLinkedTask.link_id
     : undefined;
+}
+
+function resolveSelectedDropdownOptionId(
+  customField: ClickUpTaskCustomField | undefined,
+) {
+  if (!customField) {
+    return undefined;
+  }
+
+  if (typeof customField.value === "string" && !/^\d+$/.test(customField.value)) {
+    return customField.value.length > 0 ? customField.value : undefined;
+  }
+
+  const selectedOptionIndex =
+    typeof customField.value === "number"
+      ? customField.value
+      : typeof customField.value === "string" && /^\d+$/.test(customField.value)
+        ? Number(customField.value)
+        : undefined;
+
+  if (selectedOptionIndex === undefined || !Number.isInteger(selectedOptionIndex)) {
+    return undefined;
+  }
+
+  const selectedOption = customField.type_config?.options?.[selectedOptionIndex];
+
+  return typeof selectedOption?.id === "string" ? selectedOption.id : undefined;
+}
+
+function isFirstCompensacaoEligible(sourceTask: ClickUpTask) {
+  return (
+    resolveSelectedDropdownOptionId(
+      findTaskCustomField(sourceTask, FIRST_COMPENSACAO_FIELD_ID),
+    ) === FIRST_COMPENSACAO_YES_OPTION_ID
+  );
+}
+
+function resolveMinimumWage() {
+  const minimumWage = Bun.env.MINIMUN_WAGE?.trim();
+
+  if (!minimumWage) {
+    throw new Error("MINIMUN_WAGE is not configured");
+  }
+
+  if (!Number.isFinite(Number(minimumWage))) {
+    throw new Error("MINIMUN_WAGE is invalid");
+  }
+
+  return minimumWage;
 }
 
 async function commentAndAbort(
@@ -161,6 +214,9 @@ export function createCompesacaoTaskCommand(
       return;
     }
 
+    if (!isFirstCompensacaoEligible(sourceTask)) {
+      return;
+    }
     const linkedTaskId = findFirstLinkedTaskId(sourceTask);
 
     if (!linkedTaskId) {
@@ -225,6 +281,7 @@ export function createCompesacaoTaskCommand(
       return;
     }
 
+    const minimumWage = resolveMinimumWage();
     const normalizedClientTask = normalizeClickUpTask(clientTask);
     const createdTask = await clickUpClient.createTask(
       buildPartnerCommissionTaskInputFromSource(
@@ -256,6 +313,11 @@ export function createCompesacaoTaskCommand(
         value: commissionRuleValue,
       });
     }
+
+    customFieldUpdates.push({
+      fieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+      value: minimumWage,
+    });
 
     for (const customFieldUpdate of customFieldUpdates) {
       await clickUpClient.setCustomFieldValue({
