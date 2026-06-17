@@ -422,6 +422,18 @@ export function normalizePartnerCommissionValue(value: unknown) {
     : undefined;
 }
 
+export function parsePartnerCommissionAmount(value: unknown) {
+  const normalizedValue = normalizePartnerCommissionValue(value);
+
+  if (!normalizedValue) {
+    return undefined;
+  }
+
+  const numericValue = Number(normalizedValue);
+
+  return Number.isFinite(numericValue) ? numericValue : undefined;
+}
+
 function mergeCustomFieldUpdates(
   baseUpdates: readonly CustomFieldUpdate[],
   overrideUpdates: readonly CustomFieldUpdate[],
