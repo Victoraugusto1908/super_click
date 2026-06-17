@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import { createCompesacaoTaskCommand } from "../commands/create-compesacao-task";
 import {
@@ -24,6 +24,13 @@ const PRIMARY_ACTION_FIELD_ID = "af361038-0079-4975-8de0-a8dbe409be76";
 const PRIMARY_ACTION_OPTION_ID = "c2b7e40d-516b-4986-be35-3fcef5f99cef";
 const PRIMARY_VALUE_FIELD_ID = "45128f22-7712-4fd1-8ee9-fb6fb6ffa08e";
 const SECONDARY_VALUE_FIELD_ID = "dfaa24a8-0c61-4461-9e69-8aa2c74bc0f9";
+const FIRST_COMPENSACAO_FIELD_ID = "76ba8d34-199d-4dc2-8151-161d5fa5e7c8";
+const FIRST_COMPENSACAO_YES_OPTION_ID = "9c3a52f3-568e-42b8-99ae-4f274c6bdd11";
+const FIRST_COMPENSACAO_NO_OPTION_ID = "d74ff755-1ede-491e-a9e1-f52921290d4f";
+const DESTINATION_COMMISSION_VALUE_FIELD_ID =
+  "36323f4b-8384-443b-819b-e8e5b67370c3";
+const DEFAULT_MINIMUM_WAGE = "1621";
+const originalMinimumWage = Bun.env.MINIMUN_WAGE;
 
 function createTaskUpdatedPayload(
   overrides: Partial<ClickUpTaskUpdatedWebhookPayload> = {},
@@ -47,9 +54,16 @@ function createTaskUpdatedPayload(
 }
 
 function createSourceTask(overrides?: {
-  customFields?: { id: string; value: unknown }[];
+  customFields?: {
+    id: string;
+    value: unknown;
+    type_config?: {
+      options?: { id: string }[];
+    };
+  }[];
   linkedTasks?: { task_id: string; link_id?: string }[];
   listId?: string;
+  removeCustomFieldIds?: string[];
 }) {
   const defaultCustomFields = [
     {
@@ -68,10 +82,21 @@ function createSourceTask(overrides?: {
       id: SECONDARY_VALUE_FIELD_ID,
       value: "2750000",
     },
+    {
+      id: FIRST_COMPENSACAO_FIELD_ID,
+      value: 0,
+      type_config: {
+        options: [
+          { id: FIRST_COMPENSACAO_YES_OPTION_ID },
+          { id: FIRST_COMPENSACAO_NO_OPTION_ID },
+        ],
+      },
+    },
   ];
   const overrideFieldIds = new Set(
     overrides?.customFields?.map((field) => field.id) ?? [],
   );
+  const removedFieldIds = new Set(overrides?.removeCustomFieldIds ?? []);
 
   return {
     id: SOURCE_TASK_ID,
@@ -83,7 +108,9 @@ function createSourceTask(overrides?: {
       { task_id: SOURCE_TASK_ID, link_id: RELATED_TASK_ID },
     ],
     custom_fields: [
-      ...defaultCustomFields.filter((field) => !overrideFieldIds.has(field.id)),
+      ...defaultCustomFields.filter(
+        (field) => !overrideFieldIds.has(field.id) && !removedFieldIds.has(field.id),
+      ),
       ...(overrides?.customFields ?? []),
     ],
   };
@@ -171,6 +198,19 @@ function createPartnerTask(overrides?: { commissionRule?: string | undefined }) 
 }
 
 describe("createCompesacaoTaskCommand", () => {
+  beforeEach(() => {
+    Bun.env.MINIMUN_WAGE = DEFAULT_MINIMUM_WAGE;
+  });
+
+  afterEach(() => {
+    if (originalMinimumWage === undefined) {
+      delete Bun.env.MINIMUN_WAGE;
+      return;
+    }
+
+    Bun.env.MINIMUN_WAGE = originalMinimumWage;
+  });
+
   test("creates the destination task using client-base fields and compensation overrides", async () => {
     const clickUpClient = {
       createTask: mock(async () => ({ id: "created-task-123" })),
@@ -291,6 +331,12 @@ describe("createCompesacaoTaskCommand", () => {
       value: "Teste\n",
       valueOptions: undefined,
     });
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
+      taskId: "created-task-123",
+      fieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+      value: DEFAULT_MINIMUM_WAGE,
+      valueOptions: undefined,
+    });
   });
 
   test("skips Data Pagamento Parceiro when the client has no first payment date", async () => {
@@ -363,6 +409,256 @@ describe("createCompesacaoTaskCommand", () => {
     expect(clickUpClient.createTask).not.toHaveBeenCalled();
     expect(clickUpClient.getAllTasksFromList).not.toHaveBeenCalled();
     expect(clickUpClient.createTaskComment).not.toHaveBeenCalled();
+  });
+
+  test("skips task creation when the compensation is not the first one", async () => {
+    const clickUpClient = {
+      createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () =>
+        createSourceTask({
+          customFields: [
+            {
+              id: FIRST_COMPENSACAO_FIELD_ID,
+              value: 1,
+              type_config: {
+                options: [
+                  { id: FIRST_COMPENSACAO_YES_OPTION_ID },
+                  { id: FIRST_COMPENSACAO_NO_OPTION_ID },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+      getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
+      setCustomFieldValue: mock(async () => {}),
+    };
+    const command = createCompesacaoTaskCommand({
+      clickUpClient,
+      compesacaoListId: COMPESACAO_LIST_ID,
+      partnersListId: "partners-list-123",
+    });
+
+    await command(createTaskUpdatedPayload());
+
+    expect(clickUpClient.createTask).not.toHaveBeenCalled();
+    expect(clickUpClient.getAllTasksFromList).not.toHaveBeenCalled();
+    expect(clickUpClient.createTaskComment).not.toHaveBeenCalled();
+  });
+
+  test("skips task creation when the first-compensation field is missing", async () => {
+    const clickUpClient = {
+      createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () =>
+        createSourceTask({
+          removeCustomFieldIds: [FIRST_COMPENSACAO_FIELD_ID],
+        }),
+      ),
+      getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
+      setCustomFieldValue: mock(async () => {}),
+    };
+    const command = createCompesacaoTaskCommand({
+      clickUpClient,
+      compesacaoListId: COMPESACAO_LIST_ID,
+      partnersListId: "partners-list-123",
+    });
+
+    await command(
+      createTaskUpdatedPayload(),
+    );
+
+    expect(clickUpClient.createTask).not.toHaveBeenCalled();
+    expect(clickUpClient.getAllTasksFromList).not.toHaveBeenCalled();
+    expect(clickUpClient.createTaskComment).not.toHaveBeenCalled();
+  });
+
+  test("skips task creation when the first-compensation field cannot be resolved", async () => {
+    const clickUpClient = {
+      createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () =>
+        createSourceTask({
+          customFields: [
+            {
+              id: FIRST_COMPENSACAO_FIELD_ID,
+              value: {
+                label: "Sim",
+              },
+              type_config: {
+                options: [
+                  { id: FIRST_COMPENSACAO_YES_OPTION_ID },
+                  { id: FIRST_COMPENSACAO_NO_OPTION_ID },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+      getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
+      setCustomFieldValue: mock(async () => {}),
+    };
+    const command = createCompesacaoTaskCommand({
+      clickUpClient,
+      compesacaoListId: COMPESACAO_LIST_ID,
+      partnersListId: "partners-list-123",
+    });
+
+    await command(createTaskUpdatedPayload());
+
+    expect(clickUpClient.createTask).not.toHaveBeenCalled();
+    expect(clickUpClient.getAllTasksFromList).not.toHaveBeenCalled();
+    expect(clickUpClient.createTaskComment).not.toHaveBeenCalled();
+  });
+
+  test("creates the task when the first-compensation field already stores the option id", async () => {
+    const clickUpClient = {
+      createTask: mock(async () => ({ id: "created-task-123" })),
+      getTask: mock(async (taskId: string) => {
+        if (taskId === SOURCE_TASK_ID) {
+          return createSourceTask({
+            customFields: [
+              {
+                id: FIRST_COMPENSACAO_FIELD_ID,
+                value: FIRST_COMPENSACAO_YES_OPTION_ID,
+                type_config: {
+                  options: [
+                    { id: FIRST_COMPENSACAO_YES_OPTION_ID },
+                    { id: FIRST_COMPENSACAO_NO_OPTION_ID },
+                  ],
+                },
+              },
+            ],
+          });
+        }
+
+        if (taskId === RELATED_TASK_ID) {
+          return createRelatedTask();
+        }
+
+        return createClientTask();
+      }),
+      getAllTasksFromList: mock(async () => [createPartnerTask()]),
+      createTaskComment: mock(async () => {}),
+      setCustomFieldValue: mock(async () => {}),
+    };
+    const command = createCompesacaoTaskCommand({
+      clickUpClient,
+      compesacaoListId: COMPESACAO_LIST_ID,
+      partnersListId: "partners-list-123",
+      assigneesList: "",
+    });
+
+    await command(createTaskUpdatedPayload());
+
+    expect(clickUpClient.createTask).toHaveBeenCalledTimes(1);
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
+      taskId: "created-task-123",
+      fieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+      value: DEFAULT_MINIMUM_WAGE,
+      valueOptions: undefined,
+    });
+  });
+
+  test("throws when MINIMUN_WAGE is missing for an eligible first compensation", async () => {
+    delete Bun.env.MINIMUN_WAGE;
+
+    const clickUpClient = {
+      createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async (taskId: string) => {
+        if (taskId === SOURCE_TASK_ID) {
+          return createSourceTask();
+        }
+
+        if (taskId === RELATED_TASK_ID) {
+          return createRelatedTask();
+        }
+
+        return createClientTask();
+      }),
+      getAllTasksFromList: mock(async () => [createPartnerTask()]),
+      createTaskComment: mock(async () => {}),
+      setCustomFieldValue: mock(async () => {}),
+    };
+    const command = createCompesacaoTaskCommand({
+      clickUpClient,
+      compesacaoListId: COMPESACAO_LIST_ID,
+      partnersListId: "partners-list-123",
+    });
+
+    await expect(command(createTaskUpdatedPayload())).rejects.toThrow(
+      "MINIMUN_WAGE is not configured",
+    );
+
+    expect(clickUpClient.createTask).not.toHaveBeenCalled();
+    expect(clickUpClient.getAllTasksFromList).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves comment-and-abort behavior before requiring MINIMUN_WAGE", async () => {
+    delete Bun.env.MINIMUN_WAGE;
+
+    const clickUpClient = {
+      createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async () =>
+        createSourceTask({
+          linkedTasks: [{ task_id: SOURCE_TASK_ID }],
+        }),
+      ),
+      getAllTasksFromList: mock(async () => []),
+      createTaskComment: mock(async () => {}),
+      setCustomFieldValue: mock(async () => {}),
+    };
+    const command = createCompesacaoTaskCommand({
+      clickUpClient,
+      compesacaoListId: COMPESACAO_LIST_ID,
+      partnersListId: "partners-list-123",
+    });
+
+    await command(createTaskUpdatedPayload());
+
+    expect(clickUpClient.createTask).not.toHaveBeenCalled();
+    expect(clickUpClient.getAllTasksFromList).not.toHaveBeenCalled();
+    expect(clickUpClient.createTaskComment).toHaveBeenCalledWith({
+      taskId: SOURCE_TASK_ID,
+      commentText:
+        "Fluxo COMPESACAO interrompido: não foi possível resolver task relacionada. sourceTaskId=comp-task-123",
+      notifyAll: false,
+    });
+  });
+
+  test("throws when MINIMUN_WAGE is invalid for an eligible first compensation", async () => {
+    Bun.env.MINIMUN_WAGE = "not-a-number";
+
+    const clickUpClient = {
+      createTask: mock(async () => ({ id: "unused" })),
+      getTask: mock(async (taskId: string) => {
+        if (taskId === SOURCE_TASK_ID) {
+          return createSourceTask();
+        }
+
+        if (taskId === RELATED_TASK_ID) {
+          return createRelatedTask();
+        }
+
+        return createClientTask();
+      }),
+      getAllTasksFromList: mock(async () => [createPartnerTask()]),
+      createTaskComment: mock(async () => {}),
+      setCustomFieldValue: mock(async () => {}),
+    };
+    const command = createCompesacaoTaskCommand({
+      clickUpClient,
+      compesacaoListId: COMPESACAO_LIST_ID,
+      partnersListId: "partners-list-123",
+    });
+
+    await expect(command(createTaskUpdatedPayload())).rejects.toThrow(
+      "MINIMUN_WAGE is invalid",
+    );
+
+    expect(clickUpClient.createTask).not.toHaveBeenCalled();
+    expect(clickUpClient.getAllTasksFromList).toHaveBeenCalledTimes(1);
   });
 
   test("comments and aborts when the source task has no linked related task", async () => {
