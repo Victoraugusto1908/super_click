@@ -52,17 +52,26 @@ export const DESTINATION_CNPJ_FIELD_ID =
   "436b89e7-a566-487b-becb-8e0091893a14";
 export const DESTINATION_PAYMENT_PARTNER_FIELD_ID =
   "3cbadb57-3c91-41b0-bba6-d072fa60438e";
+export const DESTINATION_COMMISSION_VALUE_FIELD_ID =
+  "36323f4b-8384-443b-819b-e8e5b67370c3";
 export const FIRST_PAYMENT_DATE_FIELD_ID =
   "ddb374d1-6293-4d9c-b907-447bf123c38a";
 export const PAYMENT_PARTNER_DATE_OFFSET_IN_MS = 10 * 24 * 60 * 60 * 1000;
+export const SOURCE_FIRST_PAYMENT_AMOUNT_FIELD_ID =
+  "11a7f636-c49e-4423-b9d5-85fb4fc2fd52";
 export const SOURCE_RAZAO_SOCIAL_FIELD_ID =
   "14fb928b-77fe-4d9b-8979-93ebc14b5ec9";
 export const SOURCE_CNPJ_FIELD_ID = "fb911467-4b4e-468a-8769-e98be89594ff";
+export const PARTNER_COMMISSION_SERVICE_TAGS = [
+  "classificação",
+  "conciliação",
+  "jurídico",
+] as const;
 
 const FIELD_MAPPINGS: readonly FieldMapping[] = [
   {
-    sourceFieldId: "11a7f636-c49e-4423-b9d5-85fb4fc2fd52",
-    destinationFieldId: "11a7f636-c49e-4423-b9d5-85fb4fc2fd52",
+    sourceFieldId: SOURCE_FIRST_PAYMENT_AMOUNT_FIELD_ID,
+    destinationFieldId: SOURCE_FIRST_PAYMENT_AMOUNT_FIELD_ID,
   },
   {
     sourceFieldId: "50839e8d-bcdb-49fd-958d-1a4ee1987fa5",
@@ -263,6 +272,29 @@ export function parseAssigneesList(value: string | undefined) {
   return assignees;
 }
 
+export function resolveEligiblePartnerCommissionServiceTags(
+  tags: readonly string[] | undefined,
+) {
+  if (!tags || tags.length === 0) {
+    return [];
+  }
+
+  const supportedTags = new Set<string>(PARTNER_COMMISSION_SERVICE_TAGS);
+  const eligibleTags: string[] = [];
+  const seenTags = new Set<string>();
+
+  for (const tag of tags) {
+    if (!supportedTags.has(tag) || seenTags.has(tag)) {
+      continue;
+    }
+
+    eligibleTags.push(tag);
+    seenTags.add(tag);
+  }
+
+  return eligibleTags;
+}
+
 export function buildPartnerCommissionTaskInputFromSource(
   source: NormalizedTaskSource,
   dependencies: Pick<
@@ -300,6 +332,94 @@ export function buildPartnerCommissionTaskInputFromSource(
     priority: DEFAULT_TASK_PRIORITY,
     assignees,
   };
+}
+
+export function buildPartnerCommissionTaskInputForServiceFromSource(
+  source: NormalizedTaskSource,
+  serviceTag: string,
+  dependencies: Pick<
+    PartnerCommissionTaskCommandDependencies,
+    "assigneesList" | "destinationCustomItemId" | "destinationStatus" | "now"
+  > = {},
+): CreateClickUpTaskInput {
+  return {
+    ...buildPartnerCommissionTaskInputFromSource(source, dependencies),
+    tags: [serviceTag],
+  };
+}
+
+export function findPartnerCommissionSourceValue(source: NormalizedTaskSource) {
+  return findNormalizedFieldValue(source.fields, SOURCE_FIRST_PAYMENT_AMOUNT_FIELD_ID)
+    ?.value;
+}
+
+function normalizeMoneyIntegerPart(value: string) {
+  const normalizedValue = value.replace(/^0+(?=\d)/, "");
+
+  return normalizedValue.length > 0 ? normalizedValue : "0";
+}
+
+function normalizeMoneyWithSingleSeparator(
+  value: string,
+  separator: "." | ",",
+) {
+  const parts = value.split(separator);
+
+  if (parts.length === 1) {
+    return normalizeMoneyIntegerPart(parts[0] ?? "");
+  }
+
+  if (
+    parts.length === 2 &&
+    parts[0] &&
+    parts[1] &&
+    /^\d+$/.test(parts[0]) &&
+    /^\d+$/.test(parts[1]) &&
+    parts[1].length <= 2
+  ) {
+    return `${normalizeMoneyIntegerPart(parts[0])}.${parts[1]}`;
+  }
+
+  return parts.join("");
+}
+
+function normalizeMoneyWithMixedSeparators(value: string) {
+  const lastCommaIndex = value.lastIndexOf(",");
+  const lastDotIndex = value.lastIndexOf(".");
+  const decimalSeparator = lastCommaIndex > lastDotIndex ? "," : ".";
+  const thousandSeparator = decimalSeparator === "," ? "." : ",";
+  const compactValue = value.split(thousandSeparator).join("");
+
+  return normalizeMoneyWithSingleSeparator(compactValue, decimalSeparator);
+}
+
+export function normalizePartnerCommissionValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const compactValue = value.replace(/^R\$\s*/i, "").replace(/\s+/g, "").trim();
+
+  if (compactValue.length === 0 || !/^[\d.,]+$/.test(compactValue)) {
+    return undefined;
+  }
+
+  const normalizedValue =
+    compactValue.includes(",") && compactValue.includes(".")
+      ? normalizeMoneyWithMixedSeparators(compactValue)
+      : compactValue.includes(",")
+        ? normalizeMoneyWithSingleSeparator(compactValue, ",")
+        : compactValue.includes(".")
+          ? normalizeMoneyWithSingleSeparator(compactValue, ".")
+          : normalizeMoneyIntegerPart(compactValue);
+
+  return /^\d+(\.\d{1,2})?$/.test(normalizedValue)
+    ? normalizedValue
+    : undefined;
 }
 
 function mergeCustomFieldUpdates(
