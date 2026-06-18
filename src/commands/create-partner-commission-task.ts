@@ -10,10 +10,13 @@ import {
   buildPartnerCommissionTaskInputFromSource,
   buildPartnerCommissionTaskInputForServiceFromSource,
   DESTINATION_COMMISSION_VALUE_FIELD_ID,
+  findPartnerCommissionSourcePartnerValue,
   findPartnerCommissionSourceValue,
   normalizePartnerCommissionValue,
   normalizeAutomationPayloadTask,
+  PARTNER_FIELD_ID,
   resolveEligiblePartnerCommissionServiceTags,
+  shouldPopulateCommissionValue,
   type CustomFieldUpdate,
   type PartnerCommissionTaskCommandDependencies,
 } from "./partner-commission-task-shared";
@@ -22,8 +25,11 @@ export type ClickUpAutomationWebhookCommand = (
   payload: ClickUpAutomationWebhookPayload,
 ) => Promise<void>;
 
+type ConsoleLike = Pick<Console, "log">;
+
 type CommandDependencies = PartnerCommissionTaskCommandDependencies & {
   clickUpClient?: ClickUpClient;
+  logger?: ConsoleLike;
 };
 
 export function buildPartnerCommissionTaskInput(
@@ -129,6 +135,7 @@ export function createPartnerCommissionTaskCommand(
 ): ClickUpAutomationWebhookCommand {
   return async (payload) => {
     const clickUpClient = dependencies.clickUpClient ?? createClickUpClient();
+    const logger = dependencies.logger ?? console;
     const normalizedSource = normalizeAutomationPayloadTask(payload);
     const eligibleServiceTags = resolveEligiblePartnerCommissionServiceTags(
       normalizedSource.tags,
@@ -139,6 +146,8 @@ export function createPartnerCommissionTaskCommand(
         clientRelationshipTaskId: payload.payload.id,
       },
     );
+    const partnerOptionId =
+      findPartnerCommissionSourcePartnerValue(normalizedSource);
     const rawCommissionValue = findPartnerCommissionSourceValue(normalizedSource);
 
     for (const serviceTag of eligibleServiceTags) {
@@ -151,11 +160,30 @@ export function createPartnerCommissionTaskCommand(
       );
 
       await setMappedCustomFields(clickUpClient, createdTask.id, customFieldUpdates);
-      await setPartnerCommissionValue(
-        clickUpClient,
-        createdTask.id,
-        rawCommissionValue,
-      );
+      if (shouldPopulateCommissionValue(partnerOptionId)) {
+        logger.log("Partner is Rede Smart; populating Valor comissão.", {
+          sourceTaskId: payload.payload.id,
+          destinationTaskId: createdTask.id,
+          partnerFieldId: PARTNER_FIELD_ID,
+          partnerValue: partnerOptionId,
+          commissionFieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+          serviceTag,
+        });
+        await setPartnerCommissionValue(
+          clickUpClient,
+          createdTask.id,
+          rawCommissionValue,
+        );
+      } else {
+        logger.log("Partner is not Rede Smart; skipping Valor comissão.", {
+          sourceTaskId: payload.payload.id,
+          destinationTaskId: createdTask.id,
+          partnerFieldId: PARTNER_FIELD_ID,
+          partnerValue: partnerOptionId ?? null,
+          commissionFieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+          serviceTag,
+        });
+      }
     }
   };
 }
