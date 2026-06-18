@@ -1,21 +1,23 @@
 import {
   COMMISSION_RULE_FIELD_ID,
   DESTINATION_PARTNER_RELATIONSHIP_FIELD_ID,
-  PARTNER_FIELD_ID,
   extractCommissionRuleValue,
   findMatchingPartnerTask,
   findTaskCustomField,
   normalizePartnerFieldValue,
 } from "./link-partner-relationship";
 import {
+  DESTINATION_COMMISSION_VALUE_FIELD_ID,
   DESTINATION_CNPJ_FIELD_ID,
   DESTINATION_RAZAO_SOCIAL_FIELD_ID,
+  PARTNER_FIELD_ID,
   SOURCE_CNPJ_FIELD_ID,
   SOURCE_RAZAO_SOCIAL_FIELD_ID,
   buildPartnerCommissionCustomFieldUpdatesFromSource,
   buildPartnerCommissionTaskInputFromSource,
   findNormalizedFieldValue,
   normalizeClickUpTask,
+  shouldPopulateCommissionValue,
   type CustomFieldUpdate,
   type PartnerCommissionTaskCommandDependencies,
 } from "./partner-commission-task-shared";
@@ -43,8 +45,6 @@ export type ClickUpTaskUpdatedWebhookCommand = (
 const RELATED_CLIENT_FIELD_ID = "49414079-b1ff-4644-ac85-71a5448424cc";
 const FIRST_COMPENSACAO_FIELD_ID = "76ba8d34-199d-4dc2-8151-161d5fa5e7c8";
 const FIRST_COMPENSACAO_YES_OPTION_ID = "9c3a52f3-568e-42b8-99ae-4f274c6bdd11";
-const DESTINATION_COMMISSION_VALUE_FIELD_ID =
-  "36323f4b-8384-443b-819b-e8e5b67370c3";
 
 type RelatedTaskReferenceValue = {
   id?: string;
@@ -281,7 +281,26 @@ export function createCompesacaoTaskCommand(
       return;
     }
 
-    const minimumWage = resolveMinimumWage();
+    const minimumWage = shouldPopulateCommissionValue(clientPartnerValue)
+      ? resolveMinimumWage()
+      : undefined;
+    if (minimumWage !== undefined) {
+      logger.log("Partner is Rede Smart; populating Valor comissão.", {
+        sourceTaskId: sourceTask.id,
+        clientTaskId: clientTask.id,
+        partnerFieldId: PARTNER_FIELD_ID,
+        partnerValue: clientPartnerValue,
+        commissionFieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+      });
+    } else {
+      logger.log("Partner is not Rede Smart; skipping Valor comissão.", {
+        sourceTaskId: sourceTask.id,
+        clientTaskId: clientTask.id,
+        partnerFieldId: PARTNER_FIELD_ID,
+        partnerValue: clientPartnerValue,
+        commissionFieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+      });
+    }
     const normalizedClientTask = normalizeClickUpTask(clientTask);
     const createdTask = await clickUpClient.createTask(
       buildPartnerCommissionTaskInputFromSource(
@@ -314,10 +333,12 @@ export function createCompesacaoTaskCommand(
       });
     }
 
-    customFieldUpdates.push({
-      fieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
-      value: minimumWage,
-    });
+    if (minimumWage !== undefined) {
+      customFieldUpdates.push({
+        fieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+        value: minimumWage,
+      });
+    }
 
     for (const customFieldUpdate of customFieldUpdates) {
       await clickUpClient.setCustomFieldValue({
