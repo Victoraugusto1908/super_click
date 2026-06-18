@@ -1,6 +1,7 @@
 import { type ClickUpAutomationWebhookCommand } from "./create-partner-commission-task";
 import {
   DESTINATION_COMMISSION_VALUE_FIELD_ID,
+  PARTNER_FIELD_ID,
   parsePartnerCommissionAmount,
 } from "./partner-commission-task-shared";
 import type {
@@ -22,11 +23,11 @@ type LinkPartnerRelationshipDependencies = {
   partnersListId?: string;
 };
 
-export const PARTNER_FIELD_ID = "9dad0502-6c3a-4aff-bb58-ddcc8857ebb0";
 export const DESTINATION_PARTNER_RELATIONSHIP_FIELD_ID =
   "a752cd26-7110-4886-928c-ff8659998a04";
 export const COMMISSION_RULE_FIELD_ID = "7c8d448e-6b4c-4e66-a12a-63a9d73469e0";
 export const SN_ALIQUOTA_FIELD_ID = "c5883c61-afa7-4e36-a90d-ce40e77d75c5";
+export { PARTNER_FIELD_ID } from "./partner-commission-task-shared";
 
 function findPayloadField(
   fields: readonly ClickUpAutomationWebhookField[] | undefined,
