@@ -10,16 +10,22 @@ import {
   DESTINATION_PAYMENT_PARTNER_FIELD_ID,
   FIRST_PAYMENT_DATE_FIELD_ID,
   normalizePartnerCommissionValue,
+  PARTNER_FIELD_ID,
+  REDE_SMART_PARTNER_OPTION_ID,
 } from "../commands/partner-commission-task-shared";
 import type { ClickUpAutomationWebhookPayload } from "../types/clickup-webhook";
+
+const OTHER_PARTNER_OPTION_ID = "other-partner-option-id";
 
 function createAutomationPayload(
   overrides?: Partial<ClickUpAutomationWebhookPayload["payload"]> & {
     firstPaymentAmount?: unknown;
+    partnerValue?: unknown;
   },
 ): ClickUpAutomationWebhookPayload {
   const {
     firstPaymentAmount = "123",
+    partnerValue = REDE_SMART_PARTNER_OPTION_ID,
     ...payloadOverrides
   } = overrides ?? {};
 
@@ -58,8 +64,8 @@ function createAutomationPayload(
           type: 1,
         },
         {
-          field_id: "9dad0502-6c3a-4aff-bb58-ddcc8857ebb0",
-          value: "82ad9f4e-e45d-4bc6-9592-59a6a0655c7b",
+          field_id: PARTNER_FIELD_ID,
+          value: partnerValue,
           type: 1,
         },
         {
@@ -130,8 +136,8 @@ describe("buildPartnerCommissionCustomFieldUpdates", () => {
         valueOptions: undefined,
       },
       {
-        fieldId: "9dad0502-6c3a-4aff-bb58-ddcc8857ebb0",
-        value: "82ad9f4e-e45d-4bc6-9592-59a6a0655c7b",
+        fieldId: PARTNER_FIELD_ID,
+        value: REDE_SMART_PARTNER_OPTION_ID,
         valueOptions: undefined,
       },
       {
@@ -272,6 +278,37 @@ describe("normalizePartnerCommissionValue", () => {
 });
 
 describe("createPartnerCommissionTaskCommand", () => {
+  test("logs when the partner is Rede Smart and Valor comissão is populated", async () => {
+    const logger = {
+      log: mock(() => {}),
+    };
+    const clickUpClient = createClickUpClientMock();
+    const command = createPartnerCommissionTaskCommand({
+      clickUpClient,
+      assigneesList: "",
+      logger,
+    });
+
+    await command(
+      createAutomationPayload({
+        tags: ["classificação"],
+      }),
+    );
+
+    expect(logger.log).toHaveBeenCalledTimes(1);
+    expect(logger.log).toHaveBeenCalledWith(
+      "Partner is Rede Smart; populating Valor comissão.",
+      {
+        sourceTaskId: "86e1r19f2",
+        destinationTaskId: "created-task-123",
+        partnerFieldId: PARTNER_FIELD_ID,
+        partnerValue: REDE_SMART_PARTNER_OPTION_ID,
+        commissionFieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+        serviceTag: "classificação",
+      },
+    );
+  });
+
   test("creates one destination task per eligible service tag", async () => {
     const clickUpClient = createClickUpClientMock({
       createTaskIds: [
@@ -413,6 +450,10 @@ describe("createPartnerCommissionTaskCommand", () => {
           value: "123",
         },
         {
+          field_id: PARTNER_FIELD_ID,
+          value: REDE_SMART_PARTNER_OPTION_ID,
+        },
+        {
           field_id: "7c8d448e-6b4c-4e66-a12a-63a9d73469e0",
           value: "nao deve ser enviado",
         },
@@ -421,7 +462,7 @@ describe("createPartnerCommissionTaskCommand", () => {
 
     await command(payload);
 
-    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledTimes(3);
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledTimes(4);
     expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(1, {
       taskId: "created-task-123",
       fieldId: "11a7f636-c49e-4423-b9d5-85fb4fc2fd52",
@@ -430,13 +471,19 @@ describe("createPartnerCommissionTaskCommand", () => {
     });
     expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(2, {
       taskId: "created-task-123",
+      fieldId: PARTNER_FIELD_ID,
+      value: REDE_SMART_PARTNER_OPTION_ID,
+      valueOptions: undefined,
+    });
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(3, {
+      taskId: "created-task-123",
       fieldId: "2bfd292d-e0c9-486f-8fd1-e5f6e37654b7",
       value: {
         add: ["86e1r19f2"],
       },
       valueOptions: undefined,
     });
-    expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(3, {
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenNthCalledWith(4, {
       taskId: "created-task-123",
       fieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
       value: "123",
@@ -500,5 +547,51 @@ describe("createPartnerCommissionTaskCommand", () => {
         "Valor da primeira mensalidade recebido: R$123,45",
       notifyAll: false,
     });
+  });
+
+  test("skips Valor comissão for non-Rede Smart partners without commenting", async () => {
+    const logger = {
+      log: mock(() => {}),
+    };
+    const clickUpClient = createClickUpClientMock();
+    const command = createPartnerCommissionTaskCommand({
+      clickUpClient,
+      assigneesList: "",
+      logger,
+    });
+
+    await command(
+      createAutomationPayload({
+        tags: ["classificação"],
+        partnerValue: OTHER_PARTNER_OPTION_ID,
+        firstPaymentAmount: "R$ abc",
+      }),
+    );
+
+    expect(clickUpClient.createTask).toHaveBeenCalledTimes(1);
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
+      taskId: "created-task-123",
+      fieldId: PARTNER_FIELD_ID,
+      value: OTHER_PARTNER_OPTION_ID,
+      valueOptions: undefined,
+    });
+    expect(clickUpClient.setCustomFieldValue).not.toHaveBeenCalledWith({
+      taskId: "created-task-123",
+      fieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+      value: expect.anything(),
+    });
+    expect(clickUpClient.createTaskComment).not.toHaveBeenCalled();
+    expect(logger.log).toHaveBeenCalledTimes(1);
+    expect(logger.log).toHaveBeenCalledWith(
+      "Partner is not Rede Smart; skipping Valor comissão.",
+      {
+        sourceTaskId: "86e1r19f2",
+        destinationTaskId: "created-task-123",
+        partnerFieldId: PARTNER_FIELD_ID,
+        partnerValue: OTHER_PARTNER_OPTION_ID,
+        commissionFieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+        serviceTag: "classificação",
+      },
+    );
   });
 });
