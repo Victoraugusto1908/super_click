@@ -54,6 +54,9 @@ export const DESTINATION_PAYMENT_PARTNER_FIELD_ID =
   "3cbadb57-3c91-41b0-bba6-d072fa60438e";
 export const DESTINATION_COMMISSION_VALUE_FIELD_ID =
   "36323f4b-8384-443b-819b-e8e5b67370c3";
+export const PARTNER_FIELD_ID = "9dad0502-6c3a-4aff-bb58-ddcc8857ebb0";
+export const REDE_SMART_PARTNER_OPTION_ID =
+  "82ad9f4e-e45d-4bc6-9592-59a6a0655c7b";
 export const FIRST_PAYMENT_DATE_FIELD_ID =
   "ddb374d1-6293-4d9c-b907-447bf123c38a";
 export const PAYMENT_PARTNER_DATE_OFFSET_IN_MS = 10 * 24 * 60 * 60 * 1000;
@@ -78,8 +81,8 @@ const FIELD_MAPPINGS: readonly FieldMapping[] = [
     destinationFieldId: "50839e8d-bcdb-49fd-958d-1a4ee1987fa5",
   },
   {
-    sourceFieldId: "9dad0502-6c3a-4aff-bb58-ddcc8857ebb0",
-    destinationFieldId: "9dad0502-6c3a-4aff-bb58-ddcc8857ebb0",
+    sourceFieldId: PARTNER_FIELD_ID,
+    destinationFieldId: PARTNER_FIELD_ID,
   },
   {
     sourceFieldId: FIRST_PAYMENT_DATE_FIELD_ID,
@@ -351,6 +354,28 @@ export function buildPartnerCommissionTaskInputForServiceFromSource(
 export function findPartnerCommissionSourceValue(source: NormalizedTaskSource) {
   return findNormalizedFieldValue(source.fields, SOURCE_FIRST_PAYMENT_AMOUNT_FIELD_ID)
     ?.value;
+}
+
+export function findPartnerCommissionSourcePartnerValue(
+  source: NormalizedTaskSource,
+) {
+  const partnerValue = findNormalizedFieldValue(source.fields, PARTNER_FIELD_ID)?.value;
+
+  if (typeof partnerValue === "string") {
+    return partnerValue;
+  }
+
+  if (typeof partnerValue === "number" && Number.isInteger(partnerValue)) {
+    return String(partnerValue);
+  }
+
+  return undefined;
+}
+
+export function shouldPopulateCommissionValue(
+  partnerOptionId: string | undefined,
+) {
+  return partnerOptionId === REDE_SMART_PARTNER_OPTION_ID;
 }
 
 function normalizeMoneyIntegerPart(value: string) {
