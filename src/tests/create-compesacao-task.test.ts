@@ -4,14 +4,16 @@ import { createCompesacaoTaskCommand } from "../commands/create-compesacao-task"
 import {
   COMMISSION_RULE_FIELD_ID,
   DESTINATION_PARTNER_RELATIONSHIP_FIELD_ID,
-  PARTNER_FIELD_ID,
 } from "../commands/link-partner-relationship";
 import {
   DESTINATION_CNPJ_FIELD_ID,
   DESTINATION_CLIENT_RELATIONSHIP_FIELD_ID,
+  DESTINATION_COMMISSION_VALUE_FIELD_ID,
   DESTINATION_PAYMENT_PARTNER_FIELD_ID,
   DESTINATION_RAZAO_SOCIAL_FIELD_ID,
   FIRST_PAYMENT_DATE_FIELD_ID,
+  PARTNER_FIELD_ID,
+  REDE_SMART_PARTNER_OPTION_ID,
 } from "../commands/partner-commission-task-shared";
 import type { ClickUpTaskUpdatedWebhookPayload } from "../types/clickup-webhook";
 
@@ -27,9 +29,8 @@ const SECONDARY_VALUE_FIELD_ID = "dfaa24a8-0c61-4461-9e69-8aa2c74bc0f9";
 const FIRST_COMPENSACAO_FIELD_ID = "76ba8d34-199d-4dc2-8151-161d5fa5e7c8";
 const FIRST_COMPENSACAO_YES_OPTION_ID = "9c3a52f3-568e-42b8-99ae-4f274c6bdd11";
 const FIRST_COMPENSACAO_NO_OPTION_ID = "d74ff755-1ede-491e-a9e1-f52921290d4f";
-const DESTINATION_COMMISSION_VALUE_FIELD_ID =
-  "36323f4b-8384-443b-819b-e8e5b67370c3";
 const DEFAULT_MINIMUM_WAGE = "1621";
+const OTHER_PARTNER_OPTION_ID = "other-partner-option-id";
 const originalMinimumWage = Bun.env.MINIMUN_WAGE;
 
 function createTaskUpdatedPayload(
@@ -133,7 +134,7 @@ function createRelatedTask() {
   };
 }
 
-function createClientTask() {
+function createClientTask(overrides?: { partnerValue?: string }) {
   return {
     id: CLIENT_TASK_ID,
     name: "VICTOR TECH LTDA",
@@ -150,7 +151,7 @@ function createClientTask() {
       },
       {
         id: PARTNER_FIELD_ID,
-        value: "82ad9f4e-e45d-4bc6-9592-59a6a0655c7b",
+        value: overrides?.partnerValue ?? REDE_SMART_PARTNER_OPTION_ID,
       },
       {
         id: FIRST_PAYMENT_DATE_FIELD_ID,
@@ -177,13 +178,16 @@ function createClientTask() {
   };
 }
 
-function createPartnerTask(overrides?: { commissionRule?: string | undefined }) {
+function createPartnerTask(overrides?: {
+  commissionRule?: string | undefined;
+  partnerValue?: string;
+}) {
   return {
     id: "partner-task-1",
     custom_fields: [
       {
         id: PARTNER_FIELD_ID,
-        value: "82ad9f4e-e45d-4bc6-9592-59a6a0655c7b",
+        value: overrides?.partnerValue ?? REDE_SMART_PARTNER_OPTION_ID,
       },
       ...(overrides?.commissionRule === undefined
         ? []
@@ -212,6 +216,9 @@ describe("createCompesacaoTaskCommand", () => {
   });
 
   test("creates the destination task using client-base fields and compensation overrides", async () => {
+    const logger = {
+      log: mock(() => {}),
+    };
     const clickUpClient = {
       createTask: mock(async () => ({ id: "created-task-123" })),
       getTask: mock(async (taskId: string) => {
@@ -239,6 +246,7 @@ describe("createCompesacaoTaskCommand", () => {
       clickUpClient,
       assigneesList: "290658850, 123456789",
       compesacaoListId: COMPESACAO_LIST_ID,
+      logger,
       now: () => 1780000000000,
       partnersListId: "partners-list-123",
     });
@@ -337,6 +345,16 @@ describe("createCompesacaoTaskCommand", () => {
       value: DEFAULT_MINIMUM_WAGE,
       valueOptions: undefined,
     });
+    expect(logger.log).toHaveBeenCalledWith(
+      "Partner is Rede Smart; populating Valor comissão.",
+      {
+        sourceTaskId: SOURCE_TASK_ID,
+        clientTaskId: CLIENT_TASK_ID,
+        partnerFieldId: PARTNER_FIELD_ID,
+        partnerValue: REDE_SMART_PARTNER_OPTION_ID,
+        commissionFieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+      },
+    );
   });
 
   test("skips Data Pagamento Parceiro when the client has no first payment date", async () => {
@@ -831,6 +849,80 @@ describe("createCompesacaoTaskCommand", () => {
       expect.objectContaining({
         fieldId: COMMISSION_RULE_FIELD_ID,
       }),
+    );
+  });
+
+  test("creates the task without populating Valor comissão for non-Rede Smart", async () => {
+    delete Bun.env.MINIMUN_WAGE;
+
+    const logger = {
+      log: mock(() => {}),
+    };
+    const clickUpClient = {
+      createTask: mock(async () => ({ id: "created-task-123" })),
+      getTask: mock(async (taskId: string) => {
+        if (taskId === SOURCE_TASK_ID) {
+          return createSourceTask();
+        }
+
+        if (taskId === RELATED_TASK_ID) {
+          return createRelatedTask();
+        }
+
+        return createClientTask({
+          partnerValue: OTHER_PARTNER_OPTION_ID,
+        });
+      }),
+      getAllTasksFromList: mock(async () => [
+        createPartnerTask({
+          commissionRule: "Teste\n",
+          partnerValue: OTHER_PARTNER_OPTION_ID,
+        }),
+      ]),
+      createTaskComment: mock(async () => {}),
+      setCustomFieldValue: mock(async () => {}),
+    };
+    const command = createCompesacaoTaskCommand({
+      clickUpClient,
+      compesacaoListId: COMPESACAO_LIST_ID,
+      logger,
+      partnersListId: "partners-list-123",
+      assigneesList: "",
+    });
+
+    await command(createTaskUpdatedPayload());
+
+    expect(clickUpClient.createTask).toHaveBeenCalledTimes(1);
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
+      taskId: "created-task-123",
+      fieldId: DESTINATION_PARTNER_RELATIONSHIP_FIELD_ID,
+      value: {
+        add: ["partner-task-1"],
+      },
+      valueOptions: undefined,
+    });
+    expect(clickUpClient.setCustomFieldValue).toHaveBeenCalledWith({
+      taskId: "created-task-123",
+      fieldId: COMMISSION_RULE_FIELD_ID,
+      value: "Teste\n",
+      valueOptions: undefined,
+    });
+    expect(clickUpClient.setCustomFieldValue).not.toHaveBeenCalledWith({
+      taskId: "created-task-123",
+      fieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+      value: expect.anything(),
+      valueOptions: undefined,
+    });
+    expect(clickUpClient.createTaskComment).not.toHaveBeenCalled();
+    expect(logger.log).toHaveBeenCalledWith(
+      "Partner is not Rede Smart; skipping Valor comissão.",
+      {
+        sourceTaskId: SOURCE_TASK_ID,
+        clientTaskId: CLIENT_TASK_ID,
+        partnerFieldId: PARTNER_FIELD_ID,
+        partnerValue: OTHER_PARTNER_OPTION_ID,
+        commissionFieldId: DESTINATION_COMMISSION_VALUE_FIELD_ID,
+      },
     );
   });
 
