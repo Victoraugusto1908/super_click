@@ -3,6 +3,7 @@ import type {
 } from "../types/clickup-webhook";
 import type {
   ClickUpTask,
+  ClickUpTaskCustomFieldOption,
   CreateClickUpTaskInput,
 } from "../utils/clickup";
 
@@ -28,6 +29,7 @@ export type NormalizedTaskField = {
   fieldId: string;
   value: unknown;
   valueOptions?: Record<string, unknown>;
+  typeConfigOptions?: ClickUpTaskCustomFieldOption[];
 };
 
 export type NormalizedTaskSource = {
@@ -152,6 +154,7 @@ export function normalizeAutomationPayloadTask(
             fieldId: field.field_id,
             value: field.value,
             valueOptions: field.value_options ?? undefined,
+            typeConfigOptions: undefined,
           },
         ];
       }) ?? [],
@@ -177,6 +180,7 @@ export function normalizeClickUpTask(task: ClickUpTask): NormalizedTaskSource {
           {
             fieldId: field.id,
             value: field.value,
+            typeConfigOptions: field.type_config?.options,
           },
         ];
       }) ?? [],
@@ -359,14 +363,29 @@ export function findPartnerCommissionSourceValue(source: NormalizedTaskSource) {
 export function findPartnerCommissionSourcePartnerValue(
   source: NormalizedTaskSource,
 ) {
-  const partnerValue = findNormalizedFieldValue(source.fields, PARTNER_FIELD_ID)?.value;
+  const partnerField = source.fields.find(
+    (field) => field.fieldId === PARTNER_FIELD_ID,
+  );
+  const partnerValue = partnerField?.value;
 
   if (typeof partnerValue === "string") {
+    if (/^\d+$/.test(partnerValue)) {
+      const selectedOption = partnerField?.typeConfigOptions?.[Number(partnerValue)];
+
+      return typeof selectedOption?.id === "string"
+        ? selectedOption.id
+        : undefined;
+    }
+
     return partnerValue;
   }
 
   if (typeof partnerValue === "number" && Number.isInteger(partnerValue)) {
-    return String(partnerValue);
+    const selectedOption = partnerField?.typeConfigOptions?.[partnerValue];
+
+    return typeof selectedOption?.id === "string"
+      ? selectedOption.id
+      : String(partnerValue);
   }
 
   return undefined;

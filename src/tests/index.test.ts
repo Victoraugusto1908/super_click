@@ -175,6 +175,7 @@ describe("createApp", () => {
 
   test("returns 200 for a valid ClickUp taskUpdated payload", async () => {
     const app = createApp({
+      handleClickUpWebhook: async () => {},
       saveWebhookPayload: async () => {},
     });
 
@@ -457,6 +458,82 @@ describe("createClickUpWebhookHandler", () => {
 
     expect(compesacaoCommand).toHaveBeenCalledTimes(1);
     expect(compesacaoCommand).toHaveBeenCalledWith(payload);
+  });
+
+  test("dispatches service commission payloads for added eligible tags", async () => {
+    const serviceCommissionCommand = mock(async () => {});
+    const handleClickUpWebhook = createClickUpWebhookHandler({
+      compesacaoListId: "",
+      novoClienteListId: "source-list-123",
+      novoParceiroListId: "",
+      serviceCommissionCommand,
+    });
+    const payload = createTaskUpdatedPayload({
+      history_items: [
+        {
+          field: "tag",
+          before: [{ name: "tributário" }],
+          after: [{ name: "tributário" }, { name: "classificação" }],
+        },
+      ],
+    });
+
+    await handleClickUpWebhook(payload);
+
+    expect(serviceCommissionCommand).toHaveBeenCalledTimes(1);
+    expect(serviceCommissionCommand).toHaveBeenCalledWith(payload, [
+      "classificação",
+    ]);
+  });
+
+  test("ignores taskUpdated payloads without tag history for the service commission flow", async () => {
+    const serviceCommissionCommand = mock(async () => {});
+    const handleClickUpWebhook = createClickUpWebhookHandler({
+      compesacaoListId: "",
+      novoClienteListId: "source-list-123",
+      novoParceiroListId: "",
+      serviceCommissionCommand,
+    });
+
+    await handleClickUpWebhook(
+      createTaskUpdatedPayload({
+        history_items: [
+          {
+            field: "custom_field",
+            after: "c2b7e40d-516b-4986-be35-3fcef5f99cef",
+            custom_field: {
+              id: "af361038-0079-4975-8de0-a8dbe409be76",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(serviceCommissionCommand).not.toHaveBeenCalled();
+  });
+
+  test("ignores taskUpdated payloads when no eligible tag was added", async () => {
+    const serviceCommissionCommand = mock(async () => {});
+    const handleClickUpWebhook = createClickUpWebhookHandler({
+      compesacaoListId: "",
+      novoClienteListId: "source-list-123",
+      novoParceiroListId: "",
+      serviceCommissionCommand,
+    });
+
+    await handleClickUpWebhook(
+      createTaskUpdatedPayload({
+        history_items: [
+          {
+            field: "tag",
+            before: ["classificação"],
+            after: ["classificação", "tributário"],
+          },
+        ],
+      }),
+    );
+
+    expect(serviceCommissionCommand).not.toHaveBeenCalled();
   });
 
   test("ignores COMPESACAO taskUpdated payloads when the option is not Boleto Pedido", async () => {

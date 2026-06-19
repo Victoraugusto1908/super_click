@@ -6,6 +6,11 @@ import {
   createCompesacaoTask,
   type ClickUpTaskUpdatedWebhookCommand,
 } from "../commands/create-compesacao-task";
+import {
+  createServiceCommissionTask,
+  extractAddedTagNamesFromTaskUpdatedPayload,
+  type ClickUpTaskUpdatedServiceWebhookCommand,
+} from "../commands/create-service-commission-task";
 import { linkPartnerRelationship } from "../commands/link-partner-relationship";
 import { findTriggeredCompensacaoField } from "../constants/compensacao-trigger-map";
 import {
@@ -13,6 +18,7 @@ import {
   isClickUpTaskUpdatedWebhookPayload,
   type ClickUpWebhookPayload,
 } from "../types/clickup-webhook";
+import { resolveEligiblePartnerCommissionServiceTags } from "../commands/partner-commission-task-shared";
 
 type ConsoleLike = Pick<Console, "warn">;
 
@@ -29,6 +35,7 @@ type ClickUpWebhookDependencies = {
   novoClienteListId?: string;
   novoParceiroCommand?: ClickUpAutomationWebhookCommand;
   novoParceiroListId?: string;
+  serviceCommissionCommand?: ClickUpTaskUpdatedServiceWebhookCommand;
 };
 
 function buildAutomationCommandRegistry(
@@ -85,6 +92,10 @@ export function createClickUpWebhookHandler(
     dependencies.compesacaoListId ?? Bun.env.COMPESACAO?.trim();
   const compesacaoCommand =
     dependencies.compesacaoCommand ?? createCompesacaoTask;
+  const novoClienteListId =
+    dependencies.novoClienteListId ?? Bun.env.NOVO_CLIENTE?.trim();
+  const serviceCommissionCommand =
+    dependencies.serviceCommissionCommand ?? createServiceCommissionTask;
 
   if (!compesacaoListId) {
     logger.warn(
@@ -116,6 +127,22 @@ export function createClickUpWebhookHandler(
 
     if (!isClickUpTaskUpdatedWebhookPayload(payload)) {
       return;
+    }
+
+    const addedTags = extractAddedTagNamesFromTaskUpdatedPayload(payload);
+
+    if (addedTags === undefined) {
+      logger.warn("ClickUp taskUpdated tag payload has an unsupported diff format.", {
+        taskId: payload.task_id,
+        webhookId: payload.webhook_id,
+      });
+    } else {
+      const addedServiceTags =
+        resolveEligiblePartnerCommissionServiceTags(addedTags);
+
+      if (addedServiceTags.length > 0 && novoClienteListId) {
+        await serviceCommissionCommand(payload, addedServiceTags);
+      }
     }
 
     if (!compesacaoListId) {
